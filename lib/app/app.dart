@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'features/notes/viewmodels/notes_viewmodel.dart';
-import 'features/notes/views/desktop_main_view.dart';
-
-void main() {
-  runApp(const MyApp());
-}
+import '../features/notes/viewmodels/notes_viewmodel.dart';
+import '../features/notes/views/desktop_main_view.dart';
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -17,19 +13,11 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Modular Journal',
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.deepPurple,
-            brightness: Brightness.light,
-          ),
+          primarySwatch: Colors.blue,
           useMaterial3: true,
+          brightness: Brightness.light,
         ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.deepPurple,
-            brightness: Brightness.dark,
-          ),
-          useMaterial3: true,
-        ),
+        darkTheme: ThemeData.dark(),
         themeMode: ThemeMode.system,
         home: const DesktopMainView(),
         debugShowCheckedModeBanner: false,

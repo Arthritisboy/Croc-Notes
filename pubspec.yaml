@@ -48,7 +48,29 @@ dependencies:
   permission_handler: ^11.3.1
   table_calendar: ^3.1.2
   responsive_builder: ^0.7.1
-  pluto_grid: ^8.0.0
+  pluto_grid:
+    ^8.0.0
+
+    # For desktop window management
+  window_manager: ^0.4.3
+  desktop_multi_window: ^0.2.0
+  flutter_acrylic: ^1.1.4 # For window transparency/effects
+
+  # For encryption (AHOY uses 3DES, but we'll use AES)
+  encrypt: ^5.0.3
+  crypto: ^3.0.6
+
+  # For drag-and-drop
+  desktop_drop: ^0.4.4
+
+  # For system tray
+  tray_manager: ^0.3.0
+
+  # For rich text editing
+  flutter_quill: ^11.0.0 # For rich text notes
+
+  # For search
+  fuzzy_bolt: ^2.0.2
 
 dev_dependencies:
   flutter_test:
