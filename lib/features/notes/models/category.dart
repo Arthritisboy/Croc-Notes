@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:modular_journal/features/notes/models/tab.dart';
+import 'tab.dart';
 
 class Category {
-  final String id;
+  String id;
   String name;
   Color color;
   List<ContentTab> tabs;
@@ -23,17 +23,19 @@ class Category {
   List<ContentTab> get unpinnedTabs =>
       tabs.where((tab) => !tab.isPinned).toList();
 
-  // Predefined colors
-  static const List<Color> availableColors = [
-    Colors.red,
-    Colors.orange,
-    Colors.yellow,
-    Colors.green,
-    Colors.blue,
-    Colors.purple,
-    Colors.pink,
-    Colors.teal,
-    Colors.brown,
-    Colors.grey,
-  ];
+  // Convert to JSON for database
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'colorValue': color.value,
+    'isExpanded': isExpanded ? 1 : 0,
+  };
+
+  // Create from JSON
+  factory Category.fromJson(Map<String, dynamic> json) => Category(
+    id: json['id'],
+    name: json['name'],
+    color: Color(json['colorValue']),
+    isExpanded: (json['isExpanded'] as int?) == 1,
+  );
 }

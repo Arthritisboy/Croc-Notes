@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
@@ -9,6 +12,11 @@ void main() async {
 
   // Initialize window manager
   await windowManager.ensureInitialized();
+
+  if (Platform.isWindows) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
 
   // Set up main window
   WindowOptions windowOptions = const WindowOptions(

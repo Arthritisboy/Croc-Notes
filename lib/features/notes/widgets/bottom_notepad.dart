@@ -43,11 +43,6 @@ class BottomNotepad extends StatelessWidget {
                   icon: const Icon(Icons.add_photo_alternate, size: 18),
                   onPressed: () {
                     // TODO: Pick image
-                    // For demo, add a placeholder
-                    viewModel.addImage(
-                      tab.id,
-                      'image_${DateTime.now().millisecondsSinceEpoch}',
-                    );
                   },
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -57,7 +52,7 @@ class BottomNotepad extends StatelessWidget {
             ),
           ),
 
-          // Content area with text and images
+          // Content area for this specific tab
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(12),
@@ -66,6 +61,9 @@ class BottomNotepad extends StatelessWidget {
                 children: [
                   // Text field
                   TextFormField(
+                    key: ValueKey(
+                      'bottom_notepad_${tab.id}',
+                    ), // Unique key per tab
                     initialValue: tab.contentNotepad,
                     decoration: const InputDecoration(
                       hintText: 'Write your content here...',
@@ -79,7 +77,7 @@ class BottomNotepad extends StatelessWidget {
                     },
                   ),
 
-                  // Images
+                  // Images for this specific tab
                   if (tab.imagePaths.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     const Text(
@@ -110,12 +108,9 @@ class BottomNotepad extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: Colors.grey.shade300,
                                 borderRadius: BorderRadius.circular(4),
-                                image: const DecorationImage(
-                                  image: NetworkImage(
-                                    'https://picsum.photos/200/200',
-                                  ), // Placeholder
-                                  fit: BoxFit.cover,
-                                ),
+                              ),
+                              child: const Center(
+                                child: Icon(Icons.image, color: Colors.grey),
                               ),
                             ),
                             Positioned(

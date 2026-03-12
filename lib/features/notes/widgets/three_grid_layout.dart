@@ -1,3 +1,4 @@
+// In three_grid_layout.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../viewmodels/notes_viewmodel.dart';
@@ -25,7 +26,7 @@ class ThreeGridLayout extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Tab header with pin button
+            // Tab header
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: category.color.withOpacity(0.1),
@@ -56,7 +57,6 @@ class ThreeGridLayout extends StatelessWidget {
                       color: selectedTab.isPinned ? Colors.amber : Colors.grey,
                     ),
                     onPressed: () => viewModel.toggleTabPinned(selectedTab.id),
-                    tooltip: selectedTab.isPinned ? 'Unpin tab' : 'Pin tab',
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
@@ -68,30 +68,30 @@ class ThreeGridLayout extends StatelessWidget {
             Expanded(
               child: Row(
                 children: [
-                  // Left grid - Checklist (independenT)
+                  // Left grid - Checklist
                   Expanded(
                     child: TitleGrid(
-                      tab: selectedTab,
+                      tab: selectedTab, // Pass the selected tab
                       categoryColor: category.color,
                     ),
                   ),
 
-                  // Right and bottom grids - Stacked vertically
+                  // Right and bottom grids
                   Expanded(
                     child: Column(
                       children: [
-                        // Right grid - Notepad (single)
+                        // Right grid - Notepad (separate per tab)
                         Expanded(
                           child: RightNotepad(
-                            tab: selectedTab,
+                            tab: selectedTab, // Pass the selected tab
                             categoryColor: category.color,
                           ),
                         ),
 
-                        // Bottom grid - Content notepad with images
+                        // Bottom grid - Content notepad with images (separate per tab)
                         Expanded(
                           child: BottomNotepad(
-                            tab: selectedTab,
+                            tab: selectedTab, // Pass the selected tab
                             categoryColor: category.color,
                           ),
                         ),

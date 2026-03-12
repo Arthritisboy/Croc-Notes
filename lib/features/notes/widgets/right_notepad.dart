@@ -38,11 +38,12 @@ class RightNotepad extends StatelessWidget {
             ),
           ),
 
-          // Single notepad for the entire tab
+          // Single notepad for this specific tab
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: TextFormField(
+                key: ValueKey('right_notepad_${tab.id}'), // Unique key per tab
                 initialValue: tab.notepadContent,
                 decoration: const InputDecoration(
                   hintText: 'Write your notes here...',

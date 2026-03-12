@@ -9,23 +9,56 @@ class DesktopMainView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Consumer<NotesViewModel>(
-        builder: (context, viewModel, child) {
-          return const Row(
+    return Consumer<NotesViewModel>(
+      builder: (context, viewModel, child) {
+        if (viewModel.isLoading) {
+          return const Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading your journal...'),
+                ],
+              ),
+            ),
+          );
+        }
+
+        if (viewModel.error != null) {
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Error loading data: ${viewModel.error}'),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      // Retry loading
+                      viewModel.loadData();
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Scaffold(
+          body: const Row(
             children: [
-              // Left Sidebar (fixed width)
               SizedBox(width: 280, child: LeftSidebar()),
-
-              // Vertical divider between sidebar and content
               VerticalDivider(width: 1, thickness: 1),
-
-              // Main content area (expands to fill remaining space)
               Expanded(child: ThreeGridLayout()),
             ],
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

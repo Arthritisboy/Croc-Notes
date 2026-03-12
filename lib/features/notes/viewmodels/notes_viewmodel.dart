@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:modular_journal/core/database/database_service.dart';
 import '../models/note.dart';
 import '../models/category.dart';
 import '../models/tab.dart';
 
 class NotesViewModel extends ChangeNotifier {
+  final DatabaseService _db = DatabaseService();
+
   // Data stores
   List<Category> _categories = [];
 
@@ -11,16 +14,20 @@ class NotesViewModel extends ChangeNotifier {
   Category? _selectedCategory;
   ContentTab? _selectedTab;
 
+  // UI State
+  bool _showPinnedOnly = false;
+  bool _isLoading = true;
+  String? _error;
+
   // Getters
   List<Category> get categories => _categories;
   Category? get selectedCategory => _selectedCategory;
   ContentTab? get selectedTab => _selectedTab;
-  bool _showPinnedOnly = false;
-
-  // Add this getter
   bool get showPinnedOnly => _showPinnedOnly;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
 
-  // Get all pinned tabs across all categories (for pinned section)
+  // Get all pinned tabs across all categories
   List<ContentTab> get allPinnedTabs {
     List<ContentTab> pinned = [];
     for (var category in _categories) {
@@ -29,6 +36,7 @@ class NotesViewModel extends ChangeNotifier {
     return pinned;
   }
 
+  // Get categories that have pinned tabs
   List<Category> get categoriesWithPinnedTabs {
     return _categories
         .where((category) => category.tabs.any((tab) => tab.isPinned))
@@ -36,161 +44,454 @@ class NotesViewModel extends ChangeNotifier {
   }
 
   NotesViewModel() {
-    _loadSampleData();
+    _init();
   }
+
+  Future<void> _init() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await loadData();
+    } catch (e) {
+      print('Error in _init: $e');
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // LOAD DATA FROM DATABASE
+  Future<void> loadData() async {
+    try {
+      final db = await _db.database;
+
+      // Clear existing data
+      _categories.clear();
+
+      // Load categories
+      final categoryMaps = await db.query(
+        'categories',
+        orderBy: 'sortOrder ASC',
+      );
+      print('Loaded ${categoryMaps.length} categories'); // Debug print
+
+      for (var categoryMap in categoryMaps) {
+        final category = Category(
+          id: categoryMap['id'] as String,
+          name: categoryMap['name'] as String,
+          color: Color(categoryMap['colorValue'] as int),
+          isExpanded: (categoryMap['isExpanded'] as int?) == 1,
+          tabs: [],
+        );
+
+        // Load tabs for this category
+        final tabMaps = await db.query(
+          'tabs',
+          where: 'categoryId = ?',
+          whereArgs: [category.id],
+          orderBy: 'sortOrder ASC',
+        );
+
+        print(
+          'Loaded ${tabMaps.length} tabs for category ${category.name}',
+        ); // Debug print
+
+        for (var tabMap in tabMaps) {
+          final tab = ContentTab(
+            id: tabMap['id'] as String,
+            name: tabMap['name'] as String,
+            categoryId: tabMap['categoryId'] as String,
+            isPinned: (tabMap['isPinned'] as int?) == 1,
+            color: Color(tabMap['colorValue'] as int? ?? Colors.grey.value),
+            notepadContent: tabMap['notepadContent'] as String? ?? '',
+            contentNotepad: tabMap['contentNotepad'] as String? ?? '',
+            imagePaths: [],
+            checklistItems: [],
+          );
+
+          // Load checklist items
+          final itemMaps = await db.query(
+            'checklist_items',
+            where: 'tabId = ?',
+            whereArgs: [tab.id],
+            orderBy: 'sortOrder ASC',
+          );
+
+          for (var itemMap in itemMaps) {
+            tab.checklistItems.add(
+              Note(
+                id: itemMap['id'] as String,
+                title: itemMap['title'] as String,
+                checkboxState:
+                    CheckboxState.values[itemMap['checkboxState'] as int],
+              ),
+            );
+          }
+
+          // Load images
+          final imageMaps = await db.query(
+            'images',
+            where: 'tabId = ?',
+            whereArgs: [tab.id],
+            orderBy: 'sortOrder ASC',
+          );
+
+          for (var imageMap in imageMaps) {
+            tab.imagePaths.add(imageMap['fileName'] as String);
+          }
+
+          category.tabs = [...category.tabs, tab];
+        }
+
+        _categories.add(category);
+      }
+
+      // Select first category and first tab if available
+      if (_categories.isNotEmpty) {
+        _selectedCategory = _categories.first;
+        if (_selectedCategory!.tabs.isNotEmpty) {
+          _selectedTab = _selectedCategory!.tabs.first;
+        }
+      }
+
+      print('Data loaded successfully'); // Debug print
+      notifyListeners();
+    } catch (e) {
+      print('Error loading data: $e');
+      _error = e.toString();
+      rethrow; // Rethrow so _init can catch it
+    }
+  }
+
+  // ========== CATEGORY CRUD OPERATIONS ==========
+
+  // Create new category
+  Future<void> createCategory(String name, Color color) async {
+    final db = await _db.database;
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+
+    final newCategory = Category(
+      id: id,
+      name: name,
+      color: color,
+      tabs: [],
+      isExpanded: true,
+    );
+
+    await db.insert('categories', {
+      'id': id,
+      'name': name,
+      'colorValue': color.value,
+      'isExpanded': 1,
+      'sortOrder': _categories.length,
+    });
+
+    _categories.add(newCategory);
+
+    // Auto-select the new category
+    _selectedCategory = newCategory;
+    _selectedTab = null;
+
+    notifyListeners();
+  }
+
+  // Update category
+  Future<void> updateCategory(String id, String newName, Color newColor) async {
+    final db = await _db.database;
+
+    final index = _categories.indexWhere((c) => c.id == id);
+    if (index != -1) {
+      // Update in-memory
+      _categories[index].name = newName;
+      _categories[index].color = newColor;
+
+      // Update database
+      await db.update(
+        'categories',
+        {
+          'name': newName,
+          'colorValue': newColor.value, // Make sure this is being saved
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+      notifyListeners();
+    }
+  }
+
+  // Delete category with confirmation
+  Future<bool> deleteCategory(BuildContext context, String id) async {
+    final category = _categories.firstWhere((c) => c.id == id);
+    final controller = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Category'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Type "${category.name}" to confirm deletion:'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: category.name,
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (controller.text == category.name) {
+                Navigator.pop(context, true);
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final db = await _db.database;
+
+      // Delete from database (cascade will delete tabs and items)
+      await db.delete('categories', where: 'id = ?', whereArgs: [id]);
+
+      // Remove from list
+      _categories.removeWhere((c) => c.id == id);
+
+      // Update selection
+      if (_selectedCategory?.id == id) {
+        _selectedCategory = _categories.isNotEmpty ? _categories.first : null;
+        _selectedTab = _selectedCategory?.tabs.isNotEmpty == true
+            ? _selectedCategory!.tabs.first
+            : null;
+      }
+
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  // ========== TAB CRUD OPERATIONS ==========
+
+  // Create new tab
+  Future<void> createTab(String categoryId, String name, Color color) async {
+    final db = await _db.database;
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+
+    final category = _categories.firstWhere((c) => c.id == categoryId);
+    final newTab = ContentTab(
+      id: id,
+      name: name,
+      categoryId: categoryId,
+      color: color,
+      isPinned: false,
+      notepadContent: '',
+      contentNotepad: '',
+      imagePaths: [],
+      checklistItems: [],
+    );
+
+    await db.insert('tabs', {
+      'id': id,
+      'name': name,
+      'categoryId': categoryId,
+      'isPinned': 0,
+      'colorValue': color.value,
+      'notepadContent': '',
+      'contentNotepad': '',
+      'sortOrder': category.tabs.length,
+    });
+
+    category.tabs = [...category.tabs, newTab];
+
+    // Auto-select the new tab
+    _selectedTab = newTab;
+
+    notifyListeners();
+  }
+
+  // Update tab
+  Future<void> updateTab(String id, String newName, Color newColor) async {
+    final db = await _db.database;
+
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        if (tab.id == id) {
+          // Update in-memory
+          tab.name = newName;
+          tab.color = newColor;
+
+          // Update database
+          await db.update(
+            'tabs',
+            {
+              'name': newName,
+              'colorValue': newColor.value, // Make sure this is being saved
+            },
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+
+          notifyListeners();
+          return;
+        }
+      }
+    }
+  }
+
+  // Delete tab with confirmation
+  Future<bool> deleteTab(BuildContext context, String id) async {
+    // Find the tab
+    ContentTab? tabToDelete;
+    Category? parentCategory;
+
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        if (tab.id == id) {
+          tabToDelete = tab;
+          parentCategory = category;
+          break;
+        }
+      }
+    }
+
+    if (tabToDelete == null) return false;
+
+    final controller = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Tab'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Type "${tabToDelete!.name}" to confirm deletion:'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: tabToDelete.name,
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (controller.text == tabToDelete?.name) {
+                Navigator.pop(context, true);
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final db = await _db.database;
+
+      // Delete from database
+      await db.delete('tabs', where: 'id = ?', whereArgs: [id]);
+
+      // Remove from list
+      if (parentCategory != null) {
+        parentCategory.tabs = parentCategory.tabs
+            .where((t) => t.id != id)
+            .toList();
+      }
+
+      // Update selection
+      if (_selectedTab?.id == id) {
+        _selectedTab = parentCategory?.tabs.isNotEmpty == true
+            ? parentCategory!.tabs.first
+            : null;
+      }
+
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  // ========== EXISTING METHODS (with database integration) ==========
 
   void togglePinnedOnly() {
     _showPinnedOnly = !_showPinnedOnly;
     notifyListeners();
   }
 
-  void reorderCategories(int oldIndex, int newIndex) {
+  Future<void> reorderCategories(int oldIndex, int newIndex) async {
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
     final category = _categories.removeAt(oldIndex);
     _categories.insert(newIndex, category);
-    notifyListeners();
-  }
 
-  void _loadSampleData() {
-    // Create categories with tabs
-    _categories = [
-      Category(
-        id: 'work',
-        name: 'Work',
-        color: Colors.blue,
-        tabs: [
-          ContentTab(
-            id: 'work_projects',
-            name: 'Projects',
-            categoryId: 'work',
-            isPinned: true,
-            notepadContent:
-                'This is the main notepad for Work Projects.\n\nUse this space for general notes and descriptions about your projects.',
-            contentNotepad:
-                'This is the content area for Work Projects.\n\nYou can write longer notes here and attach images below.',
-            imagePaths: [],
-            checklistItems: [
-              Note(id: '1', title: 'Complete Q1 report'),
-              Note(id: '2', title: 'Schedule team meeting'),
-              Note(id: '3', title: 'Review pull requests'),
-              Note(id: '4', title: 'Update documentation'),
-            ],
-          ),
-          ContentTab(
-            id: 'work_meetings',
-            name: 'Meetings',
-            categoryId: 'work',
-            isPinned: false,
-            notepadContent: 'Meeting notes and agendas go here.',
-            contentNotepad: 'Detailed meeting minutes with action items.',
-            imagePaths: [],
-            checklistItems: [
-              Note(id: '5', title: 'Prepare presentation'),
-              Note(id: '6', title: 'Send meeting invite'),
-              Note(id: '7', title: 'Take minutes'),
-            ],
-          ),
-          ContentTab(
-            id: 'work_tasks',
-            name: 'Tasks',
-            categoryId: 'work',
-            isPinned: true,
-            notepadContent: 'Daily task management area.',
-            contentNotepad: 'Task details and progress notes.',
-            imagePaths: ['sample.jpg'],
-            checklistItems: [
-              Note(id: '8', title: 'Morning standup'),
-              Note(id: '9', title: 'Code review'),
-              Note(id: '10', title: 'Write tests'),
-              Note(id: '11', title: 'Deploy to staging'),
-            ],
-          ),
-        ],
-      ),
-      Category(
-        id: 'personal',
-        name: 'Personal',
-        color: Colors.green,
-        tabs: [
-          ContentTab(
-            id: 'personal_journal',
-            name: 'Journal',
-            categoryId: 'personal',
-            isPinned: true,
-            notepadContent: 'Daily journal entries and reflections.',
-            contentNotepad: 'Personal thoughts, experiences, and memories.',
-            imagePaths: [],
-            checklistItems: [
-              Note(id: '12', title: 'Write today\'s entry'),
-              Note(id: '13', title: 'Add photos from weekend'),
-            ],
-          ),
-          ContentTab(
-            id: 'personal_goals',
-            name: 'Goals',
-            categoryId: 'personal',
-            isPinned: false,
-            notepadContent: 'Personal goals and aspirations.',
-            contentNotepad: 'Detailed plans for achieving goals.',
-            imagePaths: [],
-            checklistItems: [
-              Note(id: '14', title: 'Exercise 3x this week'),
-              Note(id: '15', title: 'Read 30 minutes daily'),
-              Note(id: '16', title: 'Learn Flutter'),
-            ],
-          ),
-        ],
-      ),
-      Category(
-        id: 'ideas',
-        name: 'Ideas',
-        color: Colors.purple,
-        tabs: [
-          ContentTab(
-            id: 'ideas_brainstorms',
-            name: 'Brainstorms',
-            categoryId: 'ideas',
-            isPinned: false,
-            notepadContent: 'Creative ideas and brainstorming.',
-            contentNotepad: 'Detailed notes on potential projects.',
-            imagePaths: [],
-            checklistItems: [
-              Note(id: '17', title: 'App idea: Journal app'),
-              Note(id: '18', title: 'Blog post topics'),
-            ],
-          ),
-        ],
-      ),
-    ];
-
-    // Select first category and first tab by default
-    _selectedCategory = _categories.first;
-    _selectedTab = _selectedCategory!.tabs.first;
+    final db = await _db.database;
+    for (int i = 0; i < _categories.length; i++) {
+      await db.update(
+        'categories',
+        {'sortOrder': i},
+        where: 'id = ?',
+        whereArgs: [_categories[i].id],
+      );
+    }
 
     notifyListeners();
   }
 
-  // Toggle category expansion
-  void toggleCategoryExpansion(String categoryId) {
+  Future<void> toggleCategoryExpansion(String categoryId) async {
     final category = _categories.firstWhere((c) => c.id == categoryId);
     category.isExpanded = !category.isExpanded;
+
+    final db = await _db.database;
+    await db.update(
+      'categories',
+      {'isExpanded': category.isExpanded ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [categoryId],
+    );
+
     notifyListeners();
   }
 
-  // Select category
-  void selectCategory(String categoryId) {
+  Future<void> selectCategory(String categoryId) async {
     _selectedCategory = _categories.firstWhere((c) => c.id == categoryId);
-    // Auto-select first tab of new category
     if (_selectedCategory!.tabs.isNotEmpty) {
       _selectedTab = _selectedCategory!.tabs.first;
     }
     notifyListeners();
   }
 
-  // Select tab
-  void selectTab(String tabId) {
+  Future<void> selectTab(String tabId) async {
     for (var category in _categories) {
       for (var tab in category.tabs) {
         if (tab.id == tabId) {
@@ -203,12 +504,20 @@ class NotesViewModel extends ChangeNotifier {
     }
   }
 
-  // Toggle tab pinned status
-  void toggleTabPinned(String tabId) {
+  Future<void> toggleTabPinned(String tabId) async {
     for (var category in _categories) {
       for (var tab in category.tabs) {
         if (tab.id == tabId) {
           tab.isPinned = !tab.isPinned;
+
+          final db = await _db.database;
+          await db.update(
+            'tabs',
+            {'isPinned': tab.isPinned ? 1 : 0},
+            where: 'id = ?',
+            whereArgs: [tabId],
+          );
+
           notifyListeners();
           return;
         }
@@ -216,12 +525,21 @@ class NotesViewModel extends ChangeNotifier {
     }
   }
 
-  // Toggle checklist item
-  void toggleChecklistItem(String tabId, String itemId) {
+  Future<void> toggleChecklistItem(String tabId, String itemId) async {
     for (var category in _categories) {
       for (var tab in category.tabs) {
         if (tab.id == tabId) {
           tab.toggleCheckbox(itemId);
+
+          final item = tab.checklistItems.firstWhere((i) => i.id == itemId);
+          final db = await _db.database;
+          await db.update(
+            'checklist_items',
+            {'checkboxState': item.checkboxState.index},
+            where: 'id = ?',
+            whereArgs: [itemId],
+          );
+
           notifyListeners();
           return;
         }
@@ -229,12 +547,20 @@ class NotesViewModel extends ChangeNotifier {
     }
   }
 
-  // Update notepad content (right grid)
-  void updateNotepadContent(String tabId, String content) {
+  Future<void> updateNotepadContent(String tabId, String content) async {
     for (var category in _categories) {
       for (var tab in category.tabs) {
         if (tab.id == tabId) {
           tab.notepadContent = content;
+
+          final db = await _db.database;
+          await db.update(
+            'tabs',
+            {'notepadContent': content},
+            where: 'id = ?',
+            whereArgs: [tabId],
+          );
+
           notifyListeners();
           return;
         }
@@ -242,12 +568,20 @@ class NotesViewModel extends ChangeNotifier {
     }
   }
 
-  // Update content notepad (bottom grid)
-  void updateContentNotepad(String tabId, String content) {
+  Future<void> updateContentNotepad(String tabId, String content) async {
     for (var category in _categories) {
       for (var tab in category.tabs) {
         if (tab.id == tabId) {
           tab.contentNotepad = content;
+
+          final db = await _db.database;
+          await db.update(
+            'tabs',
+            {'contentNotepad': content},
+            where: 'id = ?',
+            whereArgs: [tabId],
+          );
+
           notifyListeners();
           return;
         }
@@ -255,12 +589,22 @@ class NotesViewModel extends ChangeNotifier {
     }
   }
 
-  // Add image to tab
-  void addImage(String tabId, String imagePath) {
+  Future<void> addImage(String tabId, String imagePath) async {
     for (var category in _categories) {
       for (var tab in category.tabs) {
         if (tab.id == tabId) {
           tab.imagePaths = [...tab.imagePaths, imagePath];
+
+          final db = await _db.database;
+          await db.insert('images', {
+            'id': imagePath,
+            'tabId': tabId,
+            'filePath': await _db.getImagesDirectory() + '/$imagePath',
+            'fileName': imagePath,
+            'fileSize': 0,
+            'sortOrder': tab.imagePaths.length - 1,
+          });
+
           notifyListeners();
           return;
         }
@@ -268,12 +612,16 @@ class NotesViewModel extends ChangeNotifier {
     }
   }
 
-  // Remove image from tab
-  void removeImage(String tabId, int index) {
+  Future<void> removeImage(String tabId, int index) async {
     for (var category in _categories) {
       for (var tab in category.tabs) {
         if (tab.id == tabId) {
+          final imagePath = tab.imagePaths[index];
           tab.imagePaths = List.from(tab.imagePaths)..removeAt(index);
+
+          final db = await _db.database;
+          await db.delete('images', where: 'id = ?', whereArgs: [imagePath]);
+
           notifyListeners();
           return;
         }
@@ -281,13 +629,78 @@ class NotesViewModel extends ChangeNotifier {
     }
   }
 
-  // Add checklist item
-  void addChecklistItem(String tabId, String title) {
+  Future<void> addChecklistItem(String tabId, String title) async {
     for (var category in _categories) {
       for (var tab in category.tabs) {
         if (tab.id == tabId) {
-          tab.addChecklistItem(title);
+          final newItem = Note(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            title: title,
+          );
+          tab.checklistItems.add(newItem);
+
+          final db = await _db.database;
+          await db.insert('checklist_items', {
+            'id': newItem.id,
+            'tabId': tabId,
+            'title': title,
+            'checkboxState': 0,
+            'sortOrder': tab.checklistItems.length - 1,
+          });
+
           notifyListeners();
+          return;
+        }
+      }
+    }
+  }
+
+  Future<void> deleteChecklistItem(String tabId, String itemId) async {
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        if (tab.id == tabId) {
+          tab.checklistItems.removeWhere((item) => item.id == itemId);
+
+          final db = await _db.database;
+          await db.delete(
+            'checklist_items',
+            where: 'id = ?',
+            whereArgs: [itemId],
+          );
+
+          notifyListeners();
+          return;
+        }
+      }
+    }
+  }
+
+  Future<void> updateChecklistItemTitle(
+    String tabId,
+    String itemId,
+    String newTitle,
+  ) async {
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        if (tab.id == tabId) {
+          final index = tab.checklistItems.indexWhere(
+            (item) => item.id == itemId,
+          );
+          if (index != -1) {
+            tab.checklistItems[index] = tab.checklistItems[index].copyWith(
+              title: newTitle,
+            );
+
+            final db = await _db.database;
+            await db.update(
+              'checklist_items',
+              {'title': newTitle},
+              where: 'id = ?',
+              whereArgs: [itemId],
+            );
+
+            notifyListeners();
+          }
           return;
         }
       }

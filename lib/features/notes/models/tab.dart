@@ -1,12 +1,14 @@
-import 'package:modular_journal/features/notes/models/note.dart';
+import 'package:flutter/material.dart';
+import 'note.dart';
 
 class ContentTab {
-  final String id;
+  String id;
   String name;
   String categoryId;
   bool isPinned;
-  String notepadContent;
-  String contentNotepad;
+  Color color; // Add color for each tab
+  String notepadContent; // Right grid - separate per tab
+  String contentNotepad; // Bottom grid - separate per tab
   List<String> imagePaths;
   List<Note> checklistItems;
 
@@ -14,12 +16,19 @@ class ContentTab {
     required this.id,
     required this.name,
     required this.categoryId,
+    this.color = Colors.grey,
     this.isPinned = false,
     this.notepadContent = '',
     this.contentNotepad = '',
     this.imagePaths = const [],
     this.checklistItems = const [],
   });
+
+  // Get pinned tabs in this category
+  List<ContentTab> get pinnedTabs => []; // Placeholder
+
+  // Get unpinned tabs
+  List<ContentTab> get unpinnedTabs => []; // Placeholder
 
   // Add a new checklist item
   void addChecklistItem(String title) {
@@ -28,7 +37,7 @@ class ContentTab {
     );
   }
 
-  // Toggle checkbox - uses the Note's method
+  // Toggle checkbox
   void toggleCheckbox(String noteId) {
     final index = checklistItems.indexWhere((item) => item.id == noteId);
     if (index != -1) {
@@ -51,4 +60,26 @@ class ContentTab {
       checklistItems[index] = checklistItems[index].copyWith(title: newTitle);
     }
   }
+
+  // Convert to JSON for database
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'categoryId': categoryId,
+    'isPinned': isPinned ? 1 : 0,
+    'colorValue': color.value,
+    'notepadContent': notepadContent,
+    'contentNotepad': contentNotepad,
+  };
+
+  // Create from JSON
+  factory ContentTab.fromJson(Map<String, dynamic> json) => ContentTab(
+    id: json['id'],
+    name: json['name'],
+    categoryId: json['categoryId'],
+    isPinned: (json['isPinned'] as int?) == 1,
+    color: Color(json['colorValue'] ?? Colors.grey.value),
+    notepadContent: json['notepadContent'] as String? ?? '',
+    contentNotepad: json['contentNotepad'] as String? ?? '',
+  );
 }

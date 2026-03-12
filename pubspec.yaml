@@ -38,8 +38,13 @@ dependencies:
 
   # Other dependencies remain the same
   provider: ^6.1.2
-  sqflite: ^2.4.0 # Updated
-  path_provider: ^2.1.4 # Updated
+  sqflite: ^2.4.0
+  sqflite_common_ffi: ^2.3.3
+  archive: ^3.6.0 # For ZIP compression
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  file_picker: ^8.0.6 # For picking images
+  image_picker: ^1.1.2 # For camera/gallery
   flutter_local_notifications: ^17.2.2
   workmanager: ^0.5.2
   timezone: ^0.9.0
@@ -71,6 +76,10 @@ dependencies:
 
   # For search
   fuzzy_bolt: ^2.0.2
+
+  flutter_color: ^2.1.0
+
+  flutter_colorpicker: ^1.1.0
 
 dev_dependencies:
   flutter_test:
