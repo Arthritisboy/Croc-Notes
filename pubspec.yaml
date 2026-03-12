@@ -72,7 +72,8 @@ dependencies:
   tray_manager: ^0.3.0
 
   # For rich text editing
-  flutter_quill: ^11.0.0 # For rich text notes
+  flutter_quill: ^11.5.0
+  flutter_quill_extensions: ^11.0.0
 
   # For search
   fuzzy_bolt: ^2.0.2

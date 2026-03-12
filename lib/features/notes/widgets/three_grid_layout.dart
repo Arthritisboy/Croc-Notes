@@ -1,4 +1,4 @@
-// In three_grid_layout.dart
+// lib/features/notes/widgets/three_grid_layout.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../viewmodels/notes_viewmodel.dart';
@@ -64,38 +64,43 @@ class ThreeGridLayout extends StatelessWidget {
               ),
             ),
 
-            // Three grids
+            // CORRECT LAYOUT: Left | Right / Bottom full width
             Expanded(
-              child: Row(
+              child: Column(
                 children: [
-                  // Left grid - Checklist
+                  // Top row: Left grid + Right grid (side by side)
                   Expanded(
-                    child: TitleGrid(
-                      tab: selectedTab, // Pass the selected tab
-                      categoryColor: category.color,
-                    ),
-                  ),
-
-                  // Right and bottom grids
-                  Expanded(
-                    child: Column(
+                    flex: 1,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Right grid - Notepad (separate per tab)
+                        // Left grid - Checklist
                         Expanded(
-                          child: RightNotepad(
-                            tab: selectedTab, // Pass the selected tab
+                          flex: 1,
+                          child: TitleGrid(
+                            tab: selectedTab,
                             categoryColor: category.color,
                           ),
                         ),
 
-                        // Bottom grid - Content notepad with images (separate per tab)
+                        // Right grid - Notepad with rich text
                         Expanded(
-                          child: BottomNotepad(
-                            tab: selectedTab, // Pass the selected tab
+                          flex: 1,
+                          child: RightNotepad(
+                            tab: selectedTab,
                             categoryColor: category.color,
                           ),
                         ),
                       ],
+                    ),
+                  ),
+
+                  // Bottom row: Bottom notepad (full width)
+                  Expanded(
+                    flex: 1,
+                    child: BottomNotepad(
+                      tab: selectedTab,
+                      categoryColor: category.color,
                     ),
                   ),
                 ],

@@ -27,6 +27,21 @@ class NotesViewModel extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  List<String> getSystemFonts() {
+    return [
+      'Arial',
+      'Courier New',
+      'Georgia',
+      'Times New Roman',
+      'Verdana',
+      'Roboto',
+      'Helvetica',
+      'Calibri',
+      'Cambria',
+      'Garamond',
+    ];
+  }
+
   // Get all pinned tabs across all categories
   List<ContentTab> get allPinnedTabs {
     List<ContentTab> pinned = [];
