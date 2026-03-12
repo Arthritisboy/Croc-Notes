@@ -26,10 +26,18 @@ class _ChecklistItemDialogState extends State<ChecklistItemDialog> {
     super.initState();
     _controller = TextEditingController(text: widget.initialValue ?? '');
     _focusNode = FocusNode();
+
+    // Add listener to rebuild when text changes
+    _controller.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    setState(() {}); // Rebuild to update button state
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onTextChanged);
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -37,6 +45,9 @@ class _ChecklistItemDialogState extends State<ChecklistItemDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Check if we have valid input
+    final bool hasValidInput = _controller.text.trim().isNotEmpty;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
@@ -133,7 +144,7 @@ class _ChecklistItemDialogState extends State<ChecklistItemDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _controller.text.isNotEmpty
+                      onPressed: hasValidInput
                           ? () {
                               widget.onSave(_controller.text.trim());
                               Navigator.pop(context);
