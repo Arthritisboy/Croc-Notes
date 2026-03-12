@@ -1,9 +1,11 @@
+// lib/features/notes/widgets/title_grid.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/tab.dart';
 import '../models/note.dart';
 import '../viewmodels/notes_viewmodel.dart';
 import 'custom_checkbox.dart';
+import 'dialogs/checklist_item_dialog.dart'; // Create this file
 
 class TitleGrid extends StatelessWidget {
   final ContentTab tab;
@@ -53,7 +55,7 @@ class TitleGrid extends StatelessWidget {
             ),
           ),
 
-          // Checklist items - regular ListView (no reorder)
+          // Checklist items
           Expanded(
             child: tab.checklistItems.isEmpty
                 ? const Center(
@@ -93,11 +95,24 @@ class TitleGrid extends StatelessWidget {
                               color: Colors.grey,
                             ),
                             onPressed: () {
-                              // TODO: Delete item
+                              _showDeleteConfirmation(
+                                context,
+                                viewModel,
+                                tab.id,
+                                item,
+                              );
                             },
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                           ),
+                          onLongPress: () {
+                            _showEditItemDialog(
+                              context,
+                              viewModel,
+                              tab.id,
+                              item,
+                            );
+                          },
                         ),
                       );
                     },
@@ -109,20 +124,50 @@ class TitleGrid extends StatelessWidget {
   }
 
   void _showAddItemDialog(BuildContext context, NotesViewModel viewModel) {
-    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => ChecklistItemDialog(
+        title: 'Add Checklist Item',
+        onSave: (itemTitle) {
+          if (itemTitle.isNotEmpty) {
+            viewModel.addChecklistItem(tab.id, itemTitle);
+          }
+        },
+      ),
+    );
+  }
 
+  void _showEditItemDialog(
+    BuildContext context,
+    NotesViewModel viewModel,
+    String tabId,
+    Note item,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => ChecklistItemDialog(
+        title: 'Edit Checklist Item',
+        initialValue: item.title,
+        onSave: (newTitle) {
+          if (newTitle.isNotEmpty && newTitle != item.title) {
+            viewModel.updateChecklistItemTitle(tabId, item.id, newTitle);
+          }
+        },
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation(
+    BuildContext context,
+    NotesViewModel viewModel,
+    String tabId,
+    Note item,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Add Checklist Item'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'Enter item title',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-        ),
+        title: const Text('Delete Item'),
+        content: Text('Are you sure you want to delete "${item.title}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -130,12 +175,11 @@ class TitleGrid extends StatelessWidget {
           ),
           TextButton(
             onPressed: () {
-              if (controller.text.isNotEmpty) {
-                viewModel.addChecklistItem(tab.id, controller.text);
-                Navigator.pop(context);
-              }
+              viewModel.deleteChecklistItem(tabId, item.id);
+              Navigator.pop(context);
             },
-            child: const Text('Add'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
           ),
         ],
       ),

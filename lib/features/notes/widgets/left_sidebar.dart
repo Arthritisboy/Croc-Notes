@@ -305,71 +305,118 @@ class LeftSidebar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header with pin toggle AND Add Category button
+        // Header with search, pin toggle, and add category
         Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Row(
+          child: Column(
             children: [
-              const Text(
-                'Categories',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              // First row: Categories title and action buttons
+              Row(
+                children: [
+                  const Text(
+                    'Categories',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const Spacer(),
+                  // Search toggle button
+                  IconButton(
+                    icon: Icon(
+                      viewModel.isSearching ? Icons.search_off : Icons.search,
+                      size: 18,
+                      color: viewModel.isSearching ? Colors.blue : Colors.grey,
+                    ),
+                    onPressed: () {
+                      if (viewModel.isSearching) {
+                        // If already searching, clear search and exit search mode
+                        viewModel.clearSearch();
+                      } else {
+                        // Enable search mode with empty query
+                        viewModel.updateSearchQuery(
+                          '',
+                        ); // This will set isSearching to true
+                      }
+                    },
+                    tooltip: viewModel.isSearching ? 'Clear search' : 'Search',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 4),
+                  // Add Category button
+                  IconButton(
+                    icon: const Icon(Icons.add, size: 18),
+                    onPressed: () async {
+                      final result = await showDialog<Map<String, dynamic>>(
+                        context: context,
+                        builder: (context) => const CategoryDialog.create(),
+                      );
+                      if (result != null) {
+                        await viewModel.createCategory(
+                          result['name'],
+                          result['color'],
+                        );
+                      }
+                    },
+                    tooltip: 'Add Category',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 4),
+                  // Pinned toggle button
+                  IconButton(
+                    icon: Icon(
+                      viewModel.showPinnedOnly
+                          ? Icons.push_pin
+                          : Icons.push_pin_outlined,
+                      color: viewModel.showPinnedOnly
+                          ? Colors.amber
+                          : Colors.grey,
+                      size: 18,
+                    ),
+                    onPressed: viewModel.togglePinnedOnly,
+                    tooltip: viewModel.showPinnedOnly
+                        ? 'Show all categories'
+                        : 'Show only categories with pinned tabs',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
               ),
-              const Spacer(),
-              // Add Category button - now beside the pin icon
-              IconButton(
-                icon: const Icon(Icons.add, size: 18),
-                onPressed: () async {
-                  final result = await showDialog<Map<String, dynamic>>(
-                    context: context,
-                    builder: (context) => const CategoryDialog.create(),
-                  );
-                  if (result != null) {
-                    await viewModel.createCategory(
-                      result['name'],
-                      result['color'],
-                    );
-                  }
-                },
-                tooltip: 'Add Category',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-              const SizedBox(width: 4),
-              // Pinned toggle button
-              IconButton(
-                icon: Icon(
-                  viewModel.showPinnedOnly
-                      ? Icons.push_pin
-                      : Icons.push_pin_outlined,
-                  color: viewModel.showPinnedOnly ? Colors.amber : Colors.grey,
-                  size: 18,
+
+              // Search bar (visible when searching)
+              if (viewModel.isSearching) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  onChanged: (query) => viewModel.updateSearchQuery(query),
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Search categories and tabs...',
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () => viewModel.clearSearch(),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
                 ),
-                onPressed: viewModel.togglePinnedOnly,
-                tooltip: viewModel.showPinnedOnly
-                    ? 'Show all categories'
-                    : 'Show only categories with pinned tabs',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
+              ],
             ],
           ),
         ),
 
-        // Categories list - using ListView with custom drag handles
+        // Categories list
         Expanded(
           child: ReorderableListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            itemCount: viewModel.showPinnedOnly
-                ? viewModel.categoriesWithPinnedTabs.length
-                : viewModel.categories.length,
+            itemCount: viewModel.filteredCategories.length,
             buildDefaultDragHandles: false,
             onReorder: (oldIndex, newIndex) {
               viewModel.reorderCategories(oldIndex, newIndex);
             },
             itemBuilder: (context, index) {
-              final category = viewModel.showPinnedOnly
-                  ? viewModel.categoriesWithPinnedTabs[index]
-                  : viewModel.categories[index];
+              final category = viewModel.filteredCategories[index];
               return _buildCategoryItemWithCustomDragHandle(
                 context,
                 viewModel,
@@ -395,9 +442,19 @@ class LeftSidebar extends StatelessWidget {
         ? category.pinnedTabs
         : category.tabs;
 
+    // Check if search is active and this category matches
+    final bool isSearchMatch =
+        viewModel.isSearching &&
+        category.name.toLowerCase().contains(
+          viewModel.searchQuery.toLowerCase(),
+        );
+
     return Container(
       key: ValueKey(category.id),
       margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        color: isSearchMatch ? Colors.yellow.withOpacity(0) : null,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -437,7 +494,19 @@ class LeftSidebar extends StatelessWidget {
                   ),
                 ),
 
-                // Category name
+                // Category color circle
+                Container(
+                  width: 16,
+                  height: 16,
+                  margin: const EdgeInsets.only(right: 4),
+                  decoration: BoxDecoration(
+                    color: category.color,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                ),
+
+                // Category name with highlight if search match
                 Expanded(
                   child: InkWell(
                     onTap: () => viewModel.selectCategory(category.id),
@@ -450,6 +519,9 @@ class LeftSidebar extends StatelessWidget {
                               ? FontWeight.bold
                               : FontWeight.normal,
                           color: isSelected ? category.color : null,
+                          backgroundColor: isSearchMatch
+                              ? Colors.yellow.withOpacity(0)
+                              : null,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -462,14 +534,11 @@ class LeftSidebar extends StatelessWidget {
                   padding: const EdgeInsets.only(right: 4.0),
                   child: Text(
                     '${tabsToShow.length}',
-                    style: TextStyle(
-                      color: const Color.fromARGB(255, 226, 225, 225),
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ),
 
-                // Ellipsis button for category options (this contains edit & delete)
+                // Ellipsis button
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert, size: 16),
                   padding: EdgeInsets.zero,
@@ -532,6 +601,8 @@ class LeftSidebar extends StatelessWidget {
                     tab,
                     category.color,
                     isFocused: false,
+                    searchQuery: viewModel.searchQuery,
+                    isSearching: viewModel.isSearching,
                   ),
                 )
                 .toList(),
@@ -593,16 +664,22 @@ class LeftSidebar extends StatelessWidget {
     ContentTab tab,
     Color categoryColor, {
     required bool isFocused,
+    String searchQuery = '',
+    bool isSearching = false,
   }) {
     final isSelected = viewModel.selectedTab?.id == tab.id;
+
+    // Check if this tab matches the search
+    final bool isSearchMatch =
+        isSearching &&
+        tab.name.toLowerCase().contains(searchQuery.toLowerCase());
 
     return Container(
       margin: EdgeInsets.only(left: isFocused ? 16 : 48),
       decoration: BoxDecoration(
-        // Background color with opacity - using tab's own color
         color: isSelected
-            ? tab.color.withOpacity(0.15) // Selected tab - more visible
-            : tab.color.withOpacity(0.05), // Unselected tab - subtle
+            ? tab.color.withOpacity(0.15)
+            : tab.color.withOpacity(0.05),
         borderRadius: BorderRadius.circular(4),
       ),
       child: InkWell(
@@ -611,7 +688,6 @@ class LeftSidebar extends StatelessWidget {
           children: [
             const SizedBox(width: 24),
 
-            // REMOVED the color indicator circle
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -622,9 +698,10 @@ class LeftSidebar extends StatelessWidget {
                     fontWeight: isSelected
                         ? FontWeight.bold
                         : FontWeight.normal,
-                    color: isSelected
-                        ? categoryColor
-                        : const Color.fromARGB(255, 226, 224, 224),
+                    color: isSelected ? categoryColor : null,
+                    backgroundColor: isSearchMatch
+                        ? Colors.yellow.withOpacity(0)
+                        : null,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -643,7 +720,7 @@ class LeftSidebar extends StatelessWidget {
               constraints: const BoxConstraints(),
             ),
 
-            // Ellipsis button for tab options (this contains edit & delete)
+            // Ellipsis button
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, size: 14),
               padding: EdgeInsets.zero,

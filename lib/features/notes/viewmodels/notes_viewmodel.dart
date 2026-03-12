@@ -19,6 +19,9 @@ class NotesViewModel extends ChangeNotifier {
   bool _isLoading = true;
   String? _error;
 
+  bool _isSearching = false;
+  String _searchQuery = '';
+
   // Getters
   List<Category> get categories => _categories;
   Category? get selectedCategory => _selectedCategory;
@@ -26,6 +29,8 @@ class NotesViewModel extends ChangeNotifier {
   bool get showPinnedOnly => _showPinnedOnly;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  bool get isSearching => _isSearching;
+  String get searchQuery => _searchQuery;
 
   List<String> getSystemFonts() {
     return [
@@ -40,6 +45,25 @@ class NotesViewModel extends ChangeNotifier {
       'Cambria',
       'Garamond',
     ];
+  }
+
+  List<Category> get filteredCategories {
+    if (_searchQuery.isEmpty || !_isSearching) {
+      return _showPinnedOnly ? categoriesWithPinnedTabs : _categories;
+    }
+
+    final query = _searchQuery.toLowerCase();
+
+    // Filter categories that match OR have tabs that match
+    return _categories.where((category) {
+      // Check if category name matches
+      if (category.name.toLowerCase().contains(query)) {
+        return true;
+      }
+
+      // Check if any tab in this category matches
+      return category.tabs.any((tab) => tab.name.toLowerCase().contains(query));
+    }).toList();
   }
 
   // Get all pinned tabs across all categories
@@ -76,6 +100,19 @@ class NotesViewModel extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  // Add method to update search
+  void updateSearchQuery(String query) {
+    _searchQuery = query;
+    _isSearching = true;
+    notifyListeners();
+  }
+
+  void clearSearch() {
+    _searchQuery = '';
+    _isSearching = false;
+    notifyListeners();
   }
 
   // LOAD DATA FROM DATABASE
