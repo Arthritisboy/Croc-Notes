@@ -40,11 +40,9 @@ class _RightNotepadState extends State<RightNotepad> {
         widget.tab.notepadContent != '[]' &&
         widget.tab.notepadContent != '') {
       try {
-        // Try to parse the stored content
         final content = widget.tab.notepadContent;
         List<dynamic>? deltaJson;
 
-        // Check if it's a JSON string (stored as JSON)
         if (content.startsWith('[') && content != '[]') {
           try {
             final parsed = jsonDecode(content);
@@ -57,14 +55,12 @@ class _RightNotepadState extends State<RightNotepad> {
         }
 
         if (deltaJson != null && deltaJson.isNotEmpty) {
-          // Create document from JSON delta
           final doc = Document.fromJson(deltaJson);
           _controller = QuillController(
             document: doc,
             selection: const TextSelection.collapsed(offset: 0),
           );
         } else {
-          // Treat as plain text (but only if not empty)
           if (content.isNotEmpty && content != '[]') {
             _controller = QuillController.basic();
             _controller.document.insert(0, content);
@@ -73,7 +69,6 @@ class _RightNotepadState extends State<RightNotepad> {
           }
         }
       } catch (e) {
-        // If all else fails, create empty controller
         _controller = QuillController.basic();
       }
     } else {
@@ -83,13 +78,11 @@ class _RightNotepadState extends State<RightNotepad> {
     // Listen to changes to save automatically
     _controller.document.changes.listen((event) {
       if (_controller.document.isEmpty()) {
-        // Save empty string instead of '[]'
         final viewModel = Provider.of<NotesViewModel>(context, listen: false);
         viewModel.updateNotepadContent(widget.tab.id, '');
         return;
       }
 
-      // Save to ViewModel as JSON string
       final viewModel = Provider.of<NotesViewModel>(context, listen: false);
       final jsonContent = _controller.document.toDelta().toJson();
       viewModel.updateNotepadContent(widget.tab.id, jsonEncode(jsonContent));
@@ -99,7 +92,6 @@ class _RightNotepadState extends State<RightNotepad> {
   @override
   void didUpdateWidget(RightNotepad oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // If the tab ID changed, we need to recreate the controller
     if (oldWidget.tab.id != widget.tab.id) {
       _currentTabId = widget.tab.id;
       _controller.dispose();
@@ -179,6 +171,27 @@ class _RightNotepadState extends State<RightNotepad> {
                     'Roboto': 'Roboto',
                     'Clear': 'Clear',
                   },
+                ),
+                fontSize: QuillToolbarFontSizeButtonOptions(
+                  items: {
+                    '8': '8',
+                    '9': '9',
+                    '10': '10',
+                    '11': '11',
+                    '12': '12',
+                    '14': '14',
+                    '16': '16',
+                    '18': '18',
+                    '20': '20',
+                    '22': '22',
+                    '24': '24',
+                    '26': '26',
+                    '28': '28',
+                    '36': '36',
+                    '48': '48',
+                    '72': '72',
+                  },
+                  initialValue: '12',
                 ),
               ),
             ),

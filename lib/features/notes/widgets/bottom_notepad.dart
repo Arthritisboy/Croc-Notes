@@ -45,11 +45,9 @@ class _BottomNotepadState extends State<BottomNotepad> {
         widget.tab.contentNotepad != '[]' &&
         widget.tab.contentNotepad != '') {
       try {
-        // Try to parse the stored content
         final content = widget.tab.contentNotepad;
         List<dynamic>? deltaJson;
 
-        // Check if it's a JSON string (stored as JSON)
         if (content.startsWith('[') && content != '[]') {
           try {
             final parsed = jsonDecode(content);
@@ -62,14 +60,12 @@ class _BottomNotepadState extends State<BottomNotepad> {
         }
 
         if (deltaJson != null && deltaJson.isNotEmpty) {
-          // Create document from JSON delta
           final doc = Document.fromJson(deltaJson);
           _controller = QuillController(
             document: doc,
             selection: const TextSelection.collapsed(offset: 0),
           );
         } else {
-          // Treat as plain text (but only if not empty)
           if (content.isNotEmpty && content != '[]') {
             _controller = QuillController.basic();
             _controller.document.insert(0, content);
@@ -78,7 +74,6 @@ class _BottomNotepadState extends State<BottomNotepad> {
           }
         }
       } catch (e) {
-        // If all else fails, create empty controller
         _controller = QuillController.basic();
       }
     } else {
@@ -88,7 +83,6 @@ class _BottomNotepadState extends State<BottomNotepad> {
     // Listen to changes to save automatically
     _controller.document.changes.listen((event) {
       if (_controller.document.isEmpty()) {
-        // Save empty string instead of '[]'
         final viewModel = Provider.of<NotesViewModel>(context, listen: false);
         viewModel.updateContentNotepad(widget.tab.id, '');
         return;
@@ -103,7 +97,6 @@ class _BottomNotepadState extends State<BottomNotepad> {
   @override
   void didUpdateWidget(BottomNotepad oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // If the tab ID changed, we need to recreate the controller
     if (oldWidget.tab.id != widget.tab.id) {
       _currentTabId = widget.tab.id;
       _controller.dispose();
@@ -123,14 +116,12 @@ class _BottomNotepadState extends State<BottomNotepad> {
         final bytes = await File(pickedFile.path).readAsBytes();
         final base64Image = base64Encode(bytes);
 
-        // Insert image at current cursor position
         final index = _controller.selection.baseOffset;
         _controller.document.insert(
           index,
           BlockEmbed.image('data:image/jpeg;base64,$base64Image'),
         );
 
-        // Save to ViewModel's image list for traditional storage
         final viewModel = Provider.of<NotesViewModel>(context, listen: false);
         viewModel.addImage(widget.tab.id, pickedFile.path);
       }
@@ -218,6 +209,27 @@ class _BottomNotepadState extends State<BottomNotepad> {
                     'Roboto': 'Roboto',
                     'Clear': 'Clear',
                   },
+                ),
+                fontSize: QuillToolbarFontSizeButtonOptions(
+                  items: {
+                    '8': '8',
+                    '9': '9',
+                    '10': '10',
+                    '11': '11',
+                    '12': '12',
+                    '14': '14',
+                    '16': '16',
+                    '18': '18',
+                    '20': '20',
+                    '22': '22',
+                    '24': '24',
+                    '26': '26',
+                    '28': '28',
+                    '36': '36',
+                    '48': '48',
+                    '72': '72',
+                  },
+                  initialValue: '12',
                 ),
               ),
             ),
