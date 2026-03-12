@@ -1,12 +1,16 @@
 // lib/features/notes/widgets/bottom_notepad.dart
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:super_clipboard/super_clipboard.dart';
 import '../models/tab.dart';
 import '../viewmodels/notes_viewmodel.dart';
 
@@ -31,12 +35,200 @@ class _BottomNotepadState extends State<BottomNotepad> {
   final ImagePicker _imagePicker = ImagePicker();
   late String _currentTabId;
 
+  // Debounce variables
+  DateTime _lastPasteTime = DateTime.fromMillisecondsSinceEpoch(0);
+  static const int _pasteDebounceDuration = 500; // milliseconds
+
   @override
   void initState() {
     super.initState();
     _focusNode = FocusNode();
     _currentTabId = widget.tab.id;
     _initializeController();
+
+    // Add listener for paste events
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (_focusNode.hasFocus) {
+      // Register for paste events when focused
+      _setupPasteListener();
+    } else {
+      // Remove handler when focus lost
+      HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    }
+  }
+
+  void _setupPasteListener() {
+    // Remove any existing handler first
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    // Add new handler
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    // Only handle key down events
+    if (event is! KeyDownEvent) return false;
+
+    // Check for Ctrl+V (Windows/Linux) or Cmd+V (Mac)
+    final bool isControlPressed =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final bool isVKey = event.logicalKey == LogicalKeyboardKey.keyV;
+
+    if (isControlPressed && isVKey) {
+      // Debounce: prevent multiple rapid calls
+      final now = DateTime.now();
+      if (now.difference(_lastPasteTime).inMilliseconds <
+          _pasteDebounceDuration) {
+        debugPrint('Paste debounced');
+        return true; // Event handled (debounced)
+      }
+
+      _lastPasteTime = now;
+      _handlePaste();
+      return true; // Event handled
+    }
+
+    return false; // Event not handled
+  }
+
+  Future<void> _handlePaste() async {
+    debugPrint('Handling paste operation');
+
+    try {
+      final clipboard = SystemClipboard.instance;
+      if (clipboard == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Clipboard not available on this platform'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Read from clipboard
+      final reader = await clipboard.read();
+
+      // Check for image formats using getFile API
+      bool imageFound = false;
+
+      // Try each image format
+      final imageFormats = [
+        Formats.png,
+        Formats.jpeg,
+        Formats.bmp,
+        Formats.tiff,
+        Formats.webp,
+        Formats.gif,
+      ];
+
+      for (final format in imageFormats) {
+        if (reader.canProvide(format)) {
+          debugPrint('Found image format: $format');
+
+          // Use a completer to handle the async file reading
+          final completer = Completer<Uint8List?>();
+
+          // Use getFile to read the image data
+          reader.getFile(format, (file) async {
+            try {
+              final bytes = await file.readAll();
+              completer.complete(bytes);
+            } catch (e) {
+              completer.completeError(e);
+            } finally {
+              file.close();
+            }
+          });
+
+          // Wait for the file to be read
+          final imageBytes = await completer.future;
+
+          if (imageBytes != null && imageBytes.isNotEmpty) {
+            imageFound = true;
+
+            // Determine mime type based on format
+            String mimeType = 'image/png';
+            if (format == Formats.jpeg)
+              mimeType = 'image/jpeg';
+            else if (format == Formats.bmp)
+              mimeType = 'image/bmp';
+            else if (format == Formats.tiff)
+              mimeType = 'image/tiff';
+            else if (format == Formats.webp)
+              mimeType = 'image/webp';
+            else if (format == Formats.gif)
+              mimeType = 'image/gif';
+
+            // Insert image at current cursor position
+            final base64Image = base64Encode(imageBytes);
+            final index = _controller.selection.baseOffset;
+
+            // Ensure we have a valid index
+            if (index >= 0) {
+              _controller.document.insert(
+                index,
+                BlockEmbed.image('data:$mimeType;base64,$base64Image'),
+              );
+
+              // Save to ViewModel's image list
+              final timestamp = DateTime.now().millisecondsSinceEpoch;
+              final fileName = 'pasted_image_$timestamp.png';
+              final tempDir = await Directory.systemTemp.createTemp();
+              final tempFile = File('${tempDir.path}/$fileName');
+              await tempFile.writeAsBytes(imageBytes);
+
+              final viewModel = Provider.of<NotesViewModel>(
+                context,
+                listen: false,
+              );
+              viewModel.addImage(widget.tab.id, tempFile.path);
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Image pasted successfully'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              }
+            }
+
+            break; // Exit loop once we've processed an image
+          }
+        }
+      }
+
+      if (!imageFound) {
+        // Check for plain text as fallback
+        if (reader.canProvide(Formats.plainText)) {
+          debugPrint('No image found, letting Quill handle text paste');
+          // Let Quill handle text paste normally
+          return;
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No image found in clipboard'),
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error pasting image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error pasting image: $e')));
+      }
+    }
   }
 
   void _initializeController() {
@@ -100,8 +292,19 @@ class _BottomNotepadState extends State<BottomNotepad> {
     if (oldWidget.tab.id != widget.tab.id) {
       _currentTabId = widget.tab.id;
       _controller.dispose();
+      HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
       _initializeController();
     }
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _insertImage() async {
@@ -117,27 +320,23 @@ class _BottomNotepadState extends State<BottomNotepad> {
         final base64Image = base64Encode(bytes);
 
         final index = _controller.selection.baseOffset;
-        _controller.document.insert(
-          index,
-          BlockEmbed.image('data:image/jpeg;base64,$base64Image'),
-        );
+        if (index >= 0) {
+          _controller.document.insert(
+            index,
+            BlockEmbed.image('data:image/jpeg;base64,$base64Image'),
+          );
 
-        final viewModel = Provider.of<NotesViewModel>(context, listen: false);
-        viewModel.addImage(widget.tab.id, pickedFile.path);
+          final viewModel = Provider.of<NotesViewModel>(context, listen: false);
+          viewModel.addImage(widget.tab.id, pickedFile.path);
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error inserting image: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error inserting image: $e')));
+      }
     }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focusNode.dispose();
-    _scrollController.dispose();
-    super.dispose();
   }
 
   @override
@@ -245,7 +444,8 @@ class _BottomNotepadState extends State<BottomNotepad> {
                 focusNode: _focusNode,
                 scrollController: _scrollController,
                 config: QuillEditorConfig(
-                  placeholder: 'Write your content here...',
+                  placeholder:
+                      'Write your content here... (Ctrl+V to paste images)',
                   autoFocus: false,
                   expands: false,
                   padding: const EdgeInsets.all(8),

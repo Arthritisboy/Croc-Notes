@@ -82,6 +82,8 @@ dependencies:
 
   flutter_colorpicker: ^1.1.0
 
+  super_clipboard: ^0.8.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
