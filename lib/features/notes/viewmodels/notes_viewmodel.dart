@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:modular_journal/core/database/database_service.dart';
-import 'package:modular_journal/features/notes/widgets/dialogs/delete_categry_dialog.dart';
+import 'package:modular_journal/features/notes/widgets/dialogs/delete_category_dialog.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/delete_tab_dialog.dart';
 import '../models/note.dart';
 import '../models/category.dart';
@@ -130,7 +130,7 @@ class NotesViewModel extends ChangeNotifier {
         'categories',
         orderBy: 'sortOrder ASC',
       );
-      print('Loaded ${categoryMaps.length} categories'); // Debug print
+      print('Loaded ${categoryMaps.length} categories');
 
       for (var categoryMap in categoryMaps) {
         final category = Category(
@@ -149,9 +149,7 @@ class NotesViewModel extends ChangeNotifier {
           orderBy: 'sortOrder ASC',
         );
 
-        print(
-          'Loaded ${tabMaps.length} tabs for category ${category.name}',
-        ); // Debug print
+        print('Loaded ${tabMaps.length} tabs for category ${category.name}');
 
         for (var tabMap in tabMaps) {
           final tab = ContentTab(
@@ -166,7 +164,7 @@ class NotesViewModel extends ChangeNotifier {
             checklistItems: [],
           );
 
-          // Load checklist items
+          // Load checklist items - NOW WITH ALL TIMER FIELDS
           final itemMaps = await db.query(
             'checklist_items',
             where: 'tabId = ?',
@@ -175,12 +173,52 @@ class NotesViewModel extends ChangeNotifier {
           );
 
           for (var itemMap in itemMaps) {
+            // Extract timer fields from database
+            int timerStateIndex = itemMap['timerState'] as int? ?? 0;
+            int? timerDurationMs = itemMap['timerDuration'] as int?;
+            String? alarmSoundPath = itemMap['alarmSoundPath'] as String?;
+            int isLooping = itemMap['isLoopingAlarm'] as int? ?? 0;
+            String? timerEndTimeStr = itemMap['timerEndTime'] as String?;
+            String? timerStartTimeStr = itemMap['timerStartTime'] as String?;
+            int? elapsedTimeMs = itemMap['elapsedTime'] as int?;
+
+            // Parse dates if they exist
+            DateTime? timerEndTime;
+            if (timerEndTimeStr != null && timerEndTimeStr.isNotEmpty) {
+              try {
+                timerEndTime = DateTime.parse(timerEndTimeStr);
+              } catch (e) {
+                print('Error parsing timerEndTime: $e');
+              }
+            }
+
+            DateTime? timerStartTime;
+            if (timerStartTimeStr != null && timerStartTimeStr.isNotEmpty) {
+              try {
+                timerStartTime = DateTime.parse(timerStartTimeStr);
+              } catch (e) {
+                print('Error parsing timerStartTime: $e');
+              }
+            }
+
+            TimerState loadedTimerState = TimerState.idle;
+
+            // Create Note with ALL properties
             tab.checklistItems.add(
               Note(
                 id: itemMap['id'] as String,
                 title: itemMap['title'] as String,
                 checkboxState:
                     CheckboxState.values[itemMap['checkboxState'] as int],
+                timerState: TimerState.idle, // Force idle on load
+                timerDuration: timerDurationMs != null
+                    ? Duration(milliseconds: timerDurationMs)
+                    : null,
+                alarmSoundPath: alarmSoundPath,
+                isLoopingAlarm: isLooping == 1,
+                timerEndTime: null, // Clear any existing end time
+                timerStartTime: null, // Clear any existing start time
+                elapsedTime: null, // Clear any existing elapsed time
               ),
             );
           }
@@ -211,12 +249,12 @@ class NotesViewModel extends ChangeNotifier {
         }
       }
 
-      print('Data loaded successfully'); // Debug print
+      print('Data loaded successfully');
       notifyListeners();
     } catch (e) {
       print('Error loading data: $e');
       _error = e.toString();
-      rethrow; // Rethrow so _init can catch it
+      rethrow;
     }
   }
 
@@ -686,6 +724,65 @@ class NotesViewModel extends ChangeNotifier {
 
             notifyListeners();
           }
+          return;
+        }
+      }
+    }
+  }
+
+  Future<void> addChecklistItemWithTimer(String tabId, Note timerItem) async {
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        if (tab.id == tabId) {
+          // Add to in-memory list FIRST so UI updates immediately
+          tab.checklistItems.add(timerItem);
+
+          // Notify UI of the change right away
+          notifyListeners();
+
+          // Then save to database in the background
+          final db = await _db.database;
+          await db.insert('checklist_items', {
+            'id': timerItem.id,
+            'tabId': tabId,
+            'title': timerItem.title,
+            'checkboxState': timerItem.checkboxState.index,
+            'timerState': timerItem.timerState.index,
+            'timerDuration': timerItem.timerDuration?.inMilliseconds,
+            'alarmSoundPath': timerItem.alarmSoundPath,
+            'isLoopingAlarm': timerItem.isLoopingAlarm ? 1 : 0,
+            'sortOrder': tab.checklistItems.length - 1,
+          });
+
+          return;
+        }
+      }
+    }
+  }
+
+  Future<void> updateNote(Note updatedNote) async {
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        final index = tab.checklistItems.indexWhere(
+          (item) => item.id == updatedNote.id,
+        );
+        if (index != -1) {
+          tab.checklistItems[index] = updatedNote;
+
+          final db = await _db.database;
+          await db.update(
+            'checklist_items',
+            {
+              'timerState': updatedNote.timerState.index,
+              'timerEndTime': updatedNote.timerEndTime?.toIso8601String(),
+              'timerStartTime': updatedNote.timerStartTime?.toIso8601String(),
+              'elapsedTime': updatedNote.elapsedTime?.inMilliseconds,
+            },
+            where: 'id = ?',
+            whereArgs: [updatedNote.id],
+          );
+
+          notifyListeners();
           return;
         }
       }

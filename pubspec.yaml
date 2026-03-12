@@ -54,6 +54,7 @@ dependencies:
   table_calendar: ^3.1.2
   responsive_builder: ^0.7.1
   pluto_grid: ^8.0.0
+  audioplayers: ^5.2.1
 
   # For desktop window management
   window_manager: ^0.4.3

@@ -26,12 +26,11 @@ class DatabaseService {
       databaseFactory = databaseFactoryFfi;
     }
 
-    // IMPORTANT: Increment version to 2 to trigger onUpgrade
     return await openDatabase(
       dbPath,
-      version: 2, // Changed from 1 to 2
+      version: 3, // Increment to 3
       onCreate: _onCreate,
-      onUpgrade: _onUpgrade, // Add this for migrations
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -52,7 +51,7 @@ class DatabaseService {
         name TEXT NOT NULL,
         categoryId TEXT NOT NULL,
         isPinned INTEGER DEFAULT 0,
-        colorValue INTEGER DEFAULT 0, -- ADD THIS COLUMN
+        colorValue INTEGER DEFAULT 0,
         notepadContent TEXT,
         contentNotepad TEXT,
         sortOrder INTEGER,
@@ -66,6 +65,13 @@ class DatabaseService {
         tabId TEXT NOT NULL,
         title TEXT NOT NULL,
         checkboxState INTEGER DEFAULT 0,
+        timerState INTEGER DEFAULT 0,
+        timerEndTime TEXT,
+        timerDuration INTEGER,
+        alarmSoundPath TEXT,
+        isLoopingAlarm INTEGER DEFAULT 0,
+        timerStartTime TEXT,
+        elapsedTime INTEGER,
         sortOrder INTEGER,
         FOREIGN KEY (tabId) REFERENCES tabs (id) ON DELETE CASCADE
       )
@@ -84,17 +90,84 @@ class DatabaseService {
     ''');
   }
 
-  // Add this method for database migrations
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    print('Upgrading database from version $oldVersion to $newVersion');
+
+    // Upgrade to version 2 (add colorValue to tabs)
     if (oldVersion < 2) {
-      // Add colorValue column to tabs table
       try {
         await db.execute(
           'ALTER TABLE tabs ADD COLUMN colorValue INTEGER DEFAULT 0',
         );
-        print('Successfully added colorValue column to tabs table');
+        print('Added colorValue column to tabs table');
       } catch (e) {
         print('Error adding colorValue column: $e');
+      }
+    }
+
+    // Upgrade to version 3 (add timer fields to checklist_items)
+    if (oldVersion < 3) {
+      try {
+        // Check if columns already exist (optional, but safe)
+        final tableInfo = await db.rawQuery(
+          'PRAGMA table_info(checklist_items)',
+        );
+        final existingColumns = tableInfo
+            .map((col) => col['name'] as String)
+            .toList();
+
+        if (!existingColumns.contains('timerState')) {
+          await db.execute(
+            'ALTER TABLE checklist_items ADD COLUMN timerState INTEGER DEFAULT 0',
+          );
+          print('Added timerState column');
+        }
+
+        if (!existingColumns.contains('timerEndTime')) {
+          await db.execute(
+            'ALTER TABLE checklist_items ADD COLUMN timerEndTime TEXT',
+          );
+          print('Added timerEndTime column');
+        }
+
+        if (!existingColumns.contains('timerDuration')) {
+          await db.execute(
+            'ALTER TABLE checklist_items ADD COLUMN timerDuration INTEGER',
+          );
+          print('Added timerDuration column');
+        }
+
+        if (!existingColumns.contains('alarmSoundPath')) {
+          await db.execute(
+            'ALTER TABLE checklist_items ADD COLUMN alarmSoundPath TEXT',
+          );
+          print('Added alarmSoundPath column');
+        }
+
+        if (!existingColumns.contains('isLoopingAlarm')) {
+          await db.execute(
+            'ALTER TABLE checklist_items ADD COLUMN isLoopingAlarm INTEGER DEFAULT 0',
+          );
+          print('Added isLoopingAlarm column');
+        }
+
+        if (!existingColumns.contains('timerStartTime')) {
+          await db.execute(
+            'ALTER TABLE checklist_items ADD COLUMN timerStartTime TEXT',
+          );
+          print('Added timerStartTime column');
+        }
+
+        if (!existingColumns.contains('elapsedTime')) {
+          await db.execute(
+            'ALTER TABLE checklist_items ADD COLUMN elapsedTime INTEGER',
+          );
+          print('Added elapsedTime column');
+        }
+
+        print('Successfully added all timer columns to checklist_items table');
+      } catch (e) {
+        print('Error adding timer columns: $e');
       }
     }
   }
