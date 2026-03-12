@@ -48,185 +48,220 @@ class _CategoryDialogState extends State<CategoryDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 400,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header with icon
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: _selectedColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    widget.isEditing
-                        ? Icons.edit_note
-                        : Icons.create_new_folder,
-                    color: _selectedColor,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  widget.isEditing ? 'Edit Category' : 'Create New Category',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Name field
-            TextField(
-              controller: _nameController,
-              focusNode: _focusNode,
-              decoration: InputDecoration(
-                labelText: 'Category Name',
-                hintText: 'Enter category name',
-                prefixIcon: const Icon(Icons.folder),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.grey.shade50,
-              ),
-              autofocus: true,
-            ),
-
-            const SizedBox(height: 20),
-
-            // Color selection
-            const Text(
-              'Category Color',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-
-            InkWell(
-              onTap: () async {
-                final color = await showDialog<Color>(
-                  context: context,
-                  builder: (context) => ColorPickerDialog(
-                    initialColor: _selectedColor,
-                    onColorChanged: (color) {
-                      setState(() {
-                        _selectedColor = color;
-                      });
-                    },
-                  ),
-                );
-                if (color != null) {
-                  setState(() {
-                    _selectedColor = color;
-                  });
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: _selectedColor,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                          width: 2,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _selectedColor.withOpacity(0.3),
-                            blurRadius: 8,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 450),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header with icon
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _selectedColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Tap to change color',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          Text(
-                            _colorToHex(_selectedColor),
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
+                    child: Icon(
+                      widget.isEditing
+                          ? Icons.edit_note
+                          : Icons.create_new_folder,
+                      color: _selectedColor,
+                      size: 20,
                     ),
-                    const Icon(Icons.color_lens, color: Colors.grey),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Action buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text('Cancel'),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _nameController.text.isNotEmpty
-                        ? () {
-                            Navigator.pop(context, {
-                              'name': _nameController.text.trim(),
-                              'color': _selectedColor,
-                            });
-                          }
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedColor,
-                      foregroundColor: _selectedColor.computeLuminance() > 0.5
-                          ? Colors.black
-                          : Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Text(
-                      widget.isEditing ? 'Save Changes' : 'Create Category',
+                      widget.isEditing
+                          ? 'Edit Category'
+                          : 'Create New Category',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // Category Name label (outside text field)
+              const Text(
+                'Category Name',
+                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+
+              // Name field - with dark background
+              TextField(
+                controller: _nameController,
+                focusNode: _focusNode,
+                decoration: InputDecoration(
+                  hintText: 'Enter category name',
+                  hintStyle: TextStyle(color: Colors.grey.shade400),
+                  prefixIcon: Icon(Icons.folder, color: _selectedColor),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade700),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: _selectedColor, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.shade900, // Dark background
+                  contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-              ],
-            ),
-          ],
+                style: const TextStyle(
+                  color: Colors.white, // White text
+                  fontSize: 14,
+                ),
+                autofocus: true,
+              ),
+
+              const SizedBox(height: 20),
+
+              // Color selection
+              const Text(
+                'Category Color',
+                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+
+              InkWell(
+                onTap: () async {
+                  final color = await showDialog<Color>(
+                    context: context,
+                    builder: (context) => ColorPickerDialog(
+                      initialColor: _selectedColor,
+                      onColorChanged: (color) {
+                        setState(() {
+                          _selectedColor = color;
+                        });
+                      },
+                    ),
+                  );
+                  if (color != null) {
+                    setState(() {
+                      _selectedColor = color;
+                    });
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade700),
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.grey.shade900, // Dark background
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _selectedColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.grey.shade300,
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _selectedColor.withOpacity(0.3),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Tap to change color',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade400,
+                              ),
+                            ),
+                            Text(
+                              _colorToHex(_selectedColor),
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.color_lens, color: _selectedColor),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        side: BorderSide(color: Colors.grey.shade700),
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _nameController.text.isNotEmpty
+                          ? () {
+                              Navigator.pop(context, {
+                                'name': _nameController.text.trim(),
+                                'color': _selectedColor,
+                              });
+                            }
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _selectedColor,
+                        foregroundColor: _selectedColor.computeLuminance() > 0.5
+                            ? Colors.black
+                            : Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        widget.isEditing ? 'Save Changes' : 'Create Category',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

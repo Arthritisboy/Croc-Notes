@@ -49,37 +49,19 @@ class LeftSidebar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Category header with color picker and ellipsis
+          // Category header with color circle and ellipsis
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
             child: Row(
               children: [
-                // Color circle - clickable for editing
-                InkWell(
-                  onTap: () async {
-                    final result = await showDialog<Map<String, dynamic>>(
-                      context: context,
-                      builder: (context) => CategoryDialog.edit(
-                        initialName: selectedCategory.name,
-                        initialColor: selectedCategory.color,
-                      ),
-                    );
-                    if (result != null) {
-                      await viewModel.updateCategory(
-                        selectedCategory.id,
-                        result['name'],
-                        result['color'],
-                      );
-                    }
-                  },
-                  child: Container(
-                    width: 16,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: selectedCategory.color,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey.shade300, width: 2),
-                    ),
+                // Color circle - clickable for editing (keeping this as visual indicator)
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: selectedCategory.color,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade300, width: 2),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -94,7 +76,10 @@ class LeftSidebar extends StatelessWidget {
                 ),
                 Text(
                   '${selectedCategory.tabs.length} tabs',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: const Color.fromARGB(255, 240, 239, 239),
+                  ),
                 ),
                 const SizedBox(width: 4),
                 // Ellipsis button for category options
@@ -154,25 +139,65 @@ class LeftSidebar extends StatelessWidget {
             ),
           ),
 
-          // Tabs for focused category with ellipsis buttons
+          // Tabs for focused category with background colors and ellipsis buttons
           ...selectedCategory.tabs
               .map(
                 (tab) => Container(
-                  margin: const EdgeInsets.only(left: 16),
+                  margin: const EdgeInsets.only(left: 16, right: 8),
+                  decoration: BoxDecoration(
+                    // Background color based on tab's own color with opacity
+                    color: viewModel.selectedTab?.id == tab.id
+                        ? tab.color.withOpacity(
+                            0.15,
+                          ) // Selected tab - more visible
+                        : tab.color.withOpacity(
+                            0.05,
+                          ), // Unselected tab - subtle
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                   child: InkWell(
                     onTap: () => viewModel.selectTab(tab.id),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: viewModel.selectedTab?.id == tab.id
-                            ? selectedCategory.color.withOpacity(0.05)
-                            : null,
-                      ),
-                      child: Row(
-                        children: [
-                          const SizedBox(width: 24),
-                          // Tab color indicator - clickable for color picker
-                          InkWell(
-                            onTap: () async {
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 24),
+                        // REMOVED color indicator circle
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Text(
+                              tab.name,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: viewModel.selectedTab?.id == tab.id
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: viewModel.selectedTab?.id == tab.id
+                                    ? selectedCategory.color
+                                    : const Color.fromARGB(255, 236, 234, 234),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        // Pin button
+                        IconButton(
+                          icon: Icon(
+                            tab.isPinned
+                                ? Icons.push_pin
+                                : Icons.push_pin_outlined,
+                            size: 14,
+                            color: tab.isPinned ? Colors.amber : Colors.grey,
+                          ),
+                          onPressed: () => viewModel.toggleTabPinned(tab.id),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        // Ellipsis button for tab options
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert, size: 14),
+                          padding: EdgeInsets.zero,
+                          onSelected: (value) async {
+                            if (value == 'edit') {
                               final result =
                                   await showDialog<Map<String, dynamic>>(
                                     context: context,
@@ -188,110 +213,42 @@ class LeftSidebar extends StatelessWidget {
                                   result['color'],
                                 );
                               }
-                            },
-                            child: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: tab.color,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.grey.shade300),
+                            } else if (value == 'delete') {
+                              await viewModel.deleteTab(context, tab.id);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit, size: 14),
+                                  SizedBox(width: 8),
+                                  Text('Edit Tab'),
+                                ],
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 8.0,
-                              ),
-                              child: Text(
-                                tab.name,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight:
-                                      viewModel.selectedTab?.id == tab.id
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                  color: viewModel.selectedTab?.id == tab.id
-                                      ? selectedCategory.color
-                                      : null,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.delete,
+                                    size: 14,
+                                    color: Colors.red,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Delete Tab',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                          // Pin button
-                          IconButton(
-                            icon: Icon(
-                              tab.isPinned
-                                  ? Icons.push_pin
-                                  : Icons.push_pin_outlined,
-                              size: 14,
-                              color: tab.isPinned ? Colors.amber : Colors.grey,
-                            ),
-                            onPressed: () => viewModel.toggleTabPinned(tab.id),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                          // Ellipsis button for tab options
-                          PopupMenuButton<String>(
-                            icon: const Icon(Icons.more_vert, size: 14),
-                            padding: EdgeInsets.zero,
-                            onSelected: (value) async {
-                              if (value == 'edit') {
-                                final result =
-                                    await showDialog<Map<String, dynamic>>(
-                                      context: context,
-                                      builder: (context) => TabDialog.edit(
-                                        initialName: tab.name,
-                                        initialColor: tab.color,
-                                      ),
-                                    );
-                                if (result != null) {
-                                  await viewModel.updateTab(
-                                    tab.id,
-                                    result['name'],
-                                    result['color'],
-                                  );
-                                }
-                              } else if (value == 'delete') {
-                                await viewModel.deleteTab(context, tab.id);
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(
-                                value: 'edit',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.edit, size: 14),
-                                    SizedBox(width: 8),
-                                    Text('Edit Tab'),
-                                  ],
-                                ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.delete,
-                                      size: 14,
-                                      color: Colors.red,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Delete Tab',
-                                      style: TextStyle(color: Colors.red),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                      ),
+                          ],
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                     ),
                   ),
                 ),
@@ -422,9 +379,6 @@ class LeftSidebar extends StatelessWidget {
             },
           ),
         ),
-
-        // REMOVED the big Add Category button from bottom
-        // No longer needed since it's now in the header
       ],
     );
   }
@@ -483,36 +437,6 @@ class LeftSidebar extends StatelessWidget {
                   ),
                 ),
 
-                // Category color circle - clickable for color picker
-                InkWell(
-                  onTap: () async {
-                    final result = await showDialog<Map<String, dynamic>>(
-                      context: context,
-                      builder: (context) => CategoryDialog.edit(
-                        initialName: category.name,
-                        initialColor: category.color,
-                      ),
-                    );
-                    if (result != null) {
-                      await viewModel.updateCategory(
-                        category.id,
-                        result['name'],
-                        result['color'],
-                      );
-                    }
-                  },
-                  child: Container(
-                    width: 16,
-                    height: 16,
-                    margin: const EdgeInsets.only(right: 4),
-                    decoration: BoxDecoration(
-                      color: category.color,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                  ),
-                ),
-
                 // Category name
                 Expanded(
                   child: InkWell(
@@ -538,11 +462,14 @@ class LeftSidebar extends StatelessWidget {
                   padding: const EdgeInsets.only(right: 4.0),
                   child: Text(
                     '${tabsToShow.length}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    style: TextStyle(
+                      color: const Color.fromARGB(255, 226, 225, 225),
+                      fontSize: 12,
+                    ),
                   ),
                 ),
 
-                // Ellipsis button for category options
+                // Ellipsis button for category options (this contains edit & delete)
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert, size: 16),
                   padding: EdgeInsets.zero,
@@ -633,7 +560,7 @@ class LeftSidebar extends StatelessWidget {
                     horizontal: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: Colors.grey.shade800.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Row(
@@ -671,19 +598,57 @@ class LeftSidebar extends StatelessWidget {
 
     return Container(
       margin: EdgeInsets.only(left: isFocused ? 16 : 48),
+      decoration: BoxDecoration(
+        // Background color with opacity - using tab's own color
+        color: isSelected
+            ? tab.color.withOpacity(0.15) // Selected tab - more visible
+            : tab.color.withOpacity(0.05), // Unselected tab - subtle
+        borderRadius: BorderRadius.circular(4),
+      ),
       child: InkWell(
         onTap: () => viewModel.selectTab(tab.id),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isSelected ? categoryColor.withOpacity(0.05) : null,
-          ),
-          child: Row(
-            children: [
-              const SizedBox(width: 24),
+        child: Row(
+          children: [
+            const SizedBox(width: 24),
 
-              // Tab color indicator - clickable for color picker
-              InkWell(
-                onTap: () async {
+            // REMOVED the color indicator circle
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Text(
+                  tab.name,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                    color: isSelected
+                        ? categoryColor
+                        : const Color.fromARGB(255, 226, 224, 224),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+
+            // Pin button
+            IconButton(
+              icon: Icon(
+                tab.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                size: 14,
+                color: tab.isPinned ? Colors.amber : Colors.grey,
+              ),
+              onPressed: () => viewModel.toggleTabPinned(tab.id),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+
+            // Ellipsis button for tab options (this contains edit & delete)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 14),
+              padding: EdgeInsets.zero,
+              onSelected: (value) async {
+                if (value == 'edit') {
                   final result = await showDialog<Map<String, dynamic>>(
                     context: context,
                     builder: (context) => TabDialog.edit(
@@ -698,99 +663,36 @@ class LeftSidebar extends StatelessWidget {
                       result['color'],
                     );
                   }
-                },
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  margin: const EdgeInsets.only(right: 4),
-                  decoration: BoxDecoration(
-                    color: tab.color,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey.shade300),
+                } else if (value == 'delete') {
+                  await viewModel.deleteTab(context, tab.id);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, size: 14),
+                      SizedBox(width: 8),
+                      Text('Edit'),
+                    ],
                   ),
                 ),
-              ),
-
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text(
-                    tab.name,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: isSelected ? categoryColor : null,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 14, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Delete', style: TextStyle(color: Colors.red)),
+                    ],
                   ),
                 ),
-              ),
+              ],
+            ),
 
-              // Pin button
-              IconButton(
-                icon: Icon(
-                  tab.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                  size: 14,
-                  color: tab.isPinned ? Colors.amber : Colors.grey,
-                ),
-                onPressed: () => viewModel.toggleTabPinned(tab.id),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-
-              // Ellipsis button for tab options
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, size: 14),
-                padding: EdgeInsets.zero,
-                onSelected: (value) async {
-                  if (value == 'edit') {
-                    final result = await showDialog<Map<String, dynamic>>(
-                      context: context,
-                      builder: (context) => TabDialog.edit(
-                        initialName: tab.name,
-                        initialColor: tab.color,
-                      ),
-                    );
-                    if (result != null) {
-                      await viewModel.updateTab(
-                        tab.id,
-                        result['name'],
-                        result['color'],
-                      );
-                    }
-                  } else if (value == 'delete') {
-                    await viewModel.deleteTab(context, tab.id);
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit, size: 14),
-                        SizedBox(width: 8),
-                        Text('Edit'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete, size: 14, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Delete', style: TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(width: 4),
-            ],
-          ),
+            const SizedBox(width: 4),
+          ],
         ),
       ),
     );
