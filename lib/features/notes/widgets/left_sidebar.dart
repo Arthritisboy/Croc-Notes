@@ -494,18 +494,6 @@ class LeftSidebar extends StatelessWidget {
                   ),
                 ),
 
-                // Category color circle
-                Container(
-                  width: 16,
-                  height: 16,
-                  margin: const EdgeInsets.only(right: 4),
-                  decoration: BoxDecoration(
-                    color: category.color,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                ),
-
                 // Category name with highlight if search match
                 Expanded(
                   child: InkWell(

@@ -1,4 +1,3 @@
-// lib/features/notes/widgets/dialogs/category_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:modular_journal/features/notes/widgets/color_picker_dialog.dart';
 
@@ -35,10 +34,18 @@ class _CategoryDialogState extends State<CategoryDialog> {
     _nameController = TextEditingController(text: widget.initialName ?? '');
     _selectedColor = widget.initialColor ?? Colors.blue;
     _focusNode = FocusNode();
+
+    // Add listener to rebuild when text changes
+    _nameController.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    setState(() {}); // Rebuild to update button state
   }
 
   @override
   void dispose() {
+    _nameController.removeListener(_onTextChanged);
     _nameController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -46,6 +53,9 @@ class _CategoryDialogState extends State<CategoryDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Check if we have valid input (always true for create with default color)
+    final bool hasValidInput = _nameController.text.isNotEmpty;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
@@ -118,13 +128,10 @@ class _CategoryDialogState extends State<CategoryDialog> {
                     borderSide: BorderSide(color: _selectedColor, width: 2),
                   ),
                   filled: true,
-                  fillColor: Colors.grey.shade900, // Dark background
+                  fillColor: Colors.grey.shade900,
                   contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                style: const TextStyle(
-                  color: Colors.white, // White text
-                  fontSize: 14,
-                ),
+                style: const TextStyle(color: Colors.white, fontSize: 14),
                 autofocus: true,
               ),
 
@@ -161,7 +168,7 @@ class _CategoryDialogState extends State<CategoryDialog> {
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey.shade700),
                     borderRadius: BorderRadius.circular(12),
-                    color: Colors.grey.shade900, // Dark background
+                    color: Colors.grey.shade900,
                   ),
                   child: Row(
                     children: [
@@ -235,7 +242,7 @@ class _CategoryDialogState extends State<CategoryDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _nameController.text.isNotEmpty
+                      onPressed: hasValidInput
                           ? () {
                               Navigator.pop(context, {
                                 'name': _nameController.text.trim(),
