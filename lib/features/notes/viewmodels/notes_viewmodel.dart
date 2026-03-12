@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:modular_journal/core/database/database_service.dart';
+import 'package:modular_journal/features/notes/widgets/dialogs/delete_categry_dialog.dart';
+import 'package:modular_journal/features/notes/widgets/dialogs/delete_tab_dialog.dart';
 import '../models/note.dart';
 import '../models/category.dart';
 import '../models/tab.dart';
@@ -278,44 +280,10 @@ class NotesViewModel extends ChangeNotifier {
   // Delete category with confirmation
   Future<bool> deleteCategory(BuildContext context, String id) async {
     final category = _categories.firstWhere((c) => c.id == id);
-    final controller = TextEditingController();
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Category'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Type "${category.name}" to confirm deletion:'),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: category.name,
-              ),
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (controller.text == category.name) {
-                Navigator.pop(context, true);
-              }
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      builder: (context) => DeleteCategoryDialog(category: category),
     );
 
     if (confirmed == true) {
@@ -427,44 +395,9 @@ class NotesViewModel extends ChangeNotifier {
 
     if (tabToDelete == null) return false;
 
-    final controller = TextEditingController();
-
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Tab'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Type "${tabToDelete!.name}" to confirm deletion:'),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: tabToDelete.name,
-              ),
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (controller.text == tabToDelete?.name) {
-                Navigator.pop(context, true);
-              }
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      builder: (context) => DeleteTabDialog(tab: tabToDelete!),
     );
 
     if (confirmed == true) {
