@@ -1,8 +1,10 @@
+// lib/data/services/timer_service.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:path_provider/path_provider.dart';
 
 class TimerService {
   static final TimerService _instance = TimerService._internal();
@@ -12,9 +14,14 @@ class TimerService {
   final Map<String, Timer> _activeTimers = {};
   final Map<String, AudioPlayer> _activeAlarms = {};
   final Map<String, String> _itemTitles = {};
+  String? get defaultAlarmPath => _defaultAlarmPath;
 
-  // Use a single instance of notifications plugin
+  // Initialize as late but set in initialize()
   late final FlutterLocalNotificationsPlugin _notifications;
+  bool _isInitialized = false;
+
+  // Default alarm sound path
+  String? _defaultAlarmPath;
 
   // Callbacks
   Function(String itemId, String itemTitle)? onTimerComplete;
@@ -37,6 +44,52 @@ class TimerService {
 
     await _notifications.initialize(initSettings);
     debugPrint('TimerService: Notifications initialized');
+
+    // Find default alarm sound
+    await _findDefaultAlarm();
+
+    _isInitialized = true;
+    debugPrint('TimerService: Initialization complete');
+  }
+
+  Future<void> _findDefaultAlarm() async {
+    try {
+      // Look for alarm.mp3 in various locations
+      final List<String> possiblePaths = [];
+
+      // In release build, next to executable
+      if (Platform.isWindows) {
+        final exeDir = Directory(Platform.resolvedExecutable).parent;
+        possiblePaths.add('${exeDir.path}\\assets\\sounds\\alarm.mp3');
+        possiblePaths.add('${exeDir.path}\\alarm.mp3');
+        possiblePaths.add(
+          '${exeDir.path}\\data\\flutter_assets\\assets\\sounds\\alarm.mp3',
+        );
+      }
+
+      // In debug build, in project
+      possiblePaths.add('${Directory.current.path}\\assets\\sounds\\alarm.mp3');
+      possiblePaths.add('${Directory.current.path}\\alarm.mp3');
+
+      // In app support directory
+      final appDir = await getApplicationSupportDirectory();
+      possiblePaths.add('${appDir.path}\\alarm.mp3');
+
+      for (final path in possiblePaths) {
+        final file = File(path);
+        if (await file.exists()) {
+          _defaultAlarmPath = path;
+          debugPrint('TimerService: Found default alarm at: $path');
+          break;
+        }
+      }
+
+      if (_defaultAlarmPath == null) {
+        debugPrint('TimerService: No default alarm sound found');
+      }
+    } catch (e) {
+      debugPrint('TimerService: Error finding default alarm: $e');
+    }
   }
 
   void startTimer({
@@ -47,6 +100,11 @@ class TimerService {
     bool loopSound = false,
     required Function() onComplete,
   }) {
+    if (!_isInitialized) {
+      debugPrint('TimerService: Not initialized! Call initialize() first');
+      return;
+    }
+
     // Cancel existing timer for this item
     stopTimer(itemId);
 
@@ -82,9 +140,12 @@ class TimerService {
       onShowWindow!();
     }
 
-    // Play alarm sound
-    if (soundPath != null) {
-      await playAlarm(itemId, soundPath, loopSound);
+    // Play alarm sound (use default if none provided)
+    final alarmToPlay = soundPath ?? _defaultAlarmPath;
+    if (alarmToPlay != null) {
+      await playAlarm(itemId, alarmToPlay, loopSound);
+    } else {
+      debugPrint('TimerService: No alarm sound available');
     }
 
     // Show notification
@@ -100,21 +161,30 @@ class TimerService {
   }
 
   Future<void> playAlarm(String itemId, String soundPath, bool loop) async {
-    stopAlarm(itemId);
+    try {
+      stopAlarm(itemId);
 
-    final player = AudioPlayer();
-    _activeAlarms[itemId] = player;
+      final player = AudioPlayer();
+      _activeAlarms[itemId] = player;
 
-    if (loop) {
-      await player.setReleaseMode(ReleaseMode.loop);
+      if (loop) {
+        await player.setReleaseMode(ReleaseMode.loop);
+      }
+
+      await player.setPlayerMode(PlayerMode.lowLatency);
+
+      // Check if file exists
+      final file = File(soundPath);
+      if (!await file.exists()) {
+        debugPrint('TimerService: Alarm file not found: $soundPath');
+        return;
+      }
+
+      await player.play(DeviceFileSource(soundPath));
+      debugPrint('Alarm playing for item $itemId from: $soundPath');
+    } catch (e) {
+      debugPrint('TimerService: Error playing alarm: $e');
     }
-
-    // The warning about platform thread is from audioplayers plugin
-    // It's harmless but we can try to minimize it by setting a different player mode
-    await player.setPlayerMode(PlayerMode.lowLatency);
-
-    await player.play(DeviceFileSource(soundPath));
-    debugPrint('Alarm playing for item $itemId');
   }
 
   void stopAlarm(String itemId) {
@@ -122,7 +192,7 @@ class TimerService {
     final player = _activeAlarms[itemId];
     if (player != null) {
       player.stop();
-      player.dispose(); // Dispose the player to free resources
+      player.dispose();
       _activeAlarms.remove(itemId);
       debugPrint('Alarm stopped for item $itemId');
     } else {
@@ -133,6 +203,7 @@ class TimerService {
   void stopAllAlarms() {
     for (final player in _activeAlarms.values) {
       player.stop();
+      player.dispose();
     }
     _activeAlarms.clear();
   }
@@ -146,6 +217,11 @@ class TimerService {
 
   Future<void> _showNotification(String itemId, String itemTitle) async {
     try {
+      if (!_isInitialized) {
+        debugPrint('TimerService: Not initialized, cannot show notification');
+        return;
+      }
+
       debugPrint('TimerService: Showing notification for $itemTitle');
 
       const androidDetails = AndroidNotificationDetails(
@@ -186,13 +262,7 @@ class TimerService {
     }
     _activeTimers.clear();
     _itemTitles.clear();
-
-    // Properly stop and dispose all alarms
-    for (final player in _activeAlarms.values) {
-      player.stop();
-      player.dispose();
-    }
-    _activeAlarms.clear();
+    stopAllAlarms();
 
     debugPrint('TimerService: Cleanup complete');
   }

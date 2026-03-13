@@ -143,6 +143,7 @@ flutter:
     - assets/icon/
     - assets/icon/app_icon.png
     - assets/icon/app_icon.ico
+    - assets/sounds/alarm.mp3
     # Add other asset folders as needed
     # - images/a_dot_burr.jpeg
     # - images/a_dot_ham.jpeg

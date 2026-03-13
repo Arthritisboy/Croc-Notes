@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:modular_journal/data/services/timer_service.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/delete_checklist_dialog.dart';
+import 'package:modular_journal/features/notes/widgets/dialogs/edit_timer_dialog.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/timer_complete_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -276,7 +277,8 @@ class _TitleGridState extends State<TitleGrid> {
                               ? Colors.orange.withOpacity(0.05)
                               : null,
                         ),
-                        child: ListTile(
+                        child: // Update the ListTile in build method to include edit on long press for timers
+                        ListTile(
                           dense: true,
                           leading: CustomCheckbox(
                             state: item.checkboxState,
@@ -286,7 +288,6 @@ class _TitleGridState extends State<TitleGrid> {
                           ),
                           title: Row(
                             children: [
-                              // Timer icon for all timer items
                               if (hasTimer) ...[
                                 Icon(
                                   item.timerState == TimerState.running
@@ -304,16 +305,34 @@ class _TitleGridState extends State<TitleGrid> {
                                 const SizedBox(width: 4),
                               ],
                               Expanded(
-                                child: Text(
-                                  item.title,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color:
-                                        hasTimer &&
-                                            item.timerState ==
-                                                TimerState.completed
-                                        ? Colors.green
-                                        : null,
+                                child: InkWell(
+                                  onDoubleTap: () {
+                                    if (hasTimer) {
+                                      _showEditTimerDialog(
+                                        context,
+                                        viewModel,
+                                        item,
+                                      );
+                                    } else {
+                                      _showEditItemDialog(
+                                        context,
+                                        viewModel,
+                                        widget.tab.id,
+                                        item,
+                                      );
+                                    }
+                                  },
+                                  child: Text(
+                                    item.title,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color:
+                                          hasTimer &&
+                                              item.timerState ==
+                                                  TimerState.completed
+                                          ? Colors.green
+                                          : null,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -328,9 +347,7 @@ class _TitleGridState extends State<TitleGrid> {
                                         ? Colors.orange.withOpacity(0.2)
                                         : item.timerState == TimerState.paused
                                         ? Colors.grey.withOpacity(0.2)
-                                        : Colors.orange.withOpacity(
-                                            0.1,
-                                          ), // Show time even when idle
+                                        : Colors.orange.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
@@ -349,6 +366,7 @@ class _TitleGridState extends State<TitleGrid> {
                                 ),
                             ],
                           ),
+
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -391,12 +409,18 @@ class _TitleGridState extends State<TitleGrid> {
                             ],
                           ),
                           onLongPress: () {
-                            _showEditItemDialog(
-                              context,
-                              viewModel,
-                              widget.tab.id,
-                              item,
-                            );
+                            if (hasTimer) {
+                              // It's a timer item - show timer edit dialog
+                              _showEditTimerDialog(context, viewModel, item);
+                            } else {
+                              // Regular checklist item - show regular edit dialog
+                              _showEditItemDialog(
+                                context,
+                                viewModel,
+                                widget.tab.id,
+                                item,
+                              );
+                            }
                           },
                         ),
                       );
@@ -423,6 +447,22 @@ class _TitleGridState extends State<TitleGrid> {
           if (newTitle.isNotEmpty && newTitle != item.title) {
             viewModel.updateChecklistItemTitle(tabId, item.id, newTitle);
           }
+        },
+      ),
+    );
+  }
+
+  void _showEditTimerDialog(
+    BuildContext context,
+    NotesViewModel viewModel,
+    Note item,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => EditTimerDialog(
+        timerItem: item,
+        onSave: (updatedTimer) {
+          viewModel.updateNote(updatedTimer);
         },
       ),
     );

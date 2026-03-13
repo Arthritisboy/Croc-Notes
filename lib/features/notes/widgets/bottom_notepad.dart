@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
+import 'package:modular_journal/features/notes/widgets/collapsible_toolbar.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -351,84 +352,103 @@ class _BottomNotepadState extends State<BottomNotepad> {
       ),
       child: Column(
         children: [
-          QuillSimpleToolbar(
-            controller: _controller,
-            config: QuillSimpleToolbarConfig(
-              toolbarIconAlignment: WrapAlignment.start,
-              toolbarIconCrossAlignment: WrapCrossAlignment.center,
-              toolbarSize: 40.0,
-
-              showBoldButton: true,
-              showItalicButton: true,
-              showUnderLineButton: true,
-              showStrikeThrough: true,
-              showColorButton: true,
-              showBackgroundColorButton: true,
-              showClearFormat: true,
-              showAlignmentButtons: true,
-              showLeftAlignment: true,
-              showCenterAlignment: true,
-              showRightAlignment: true,
-              showJustifyAlignment: true,
-              showHeaderStyle: true,
-              showListNumbers: true,
-              showListBullets: true,
-              showListCheck: true,
-              showQuote: true,
-              showIndent: true,
-              showLink: true,
-              showUndo: true,
-              showRedo: true,
-              showFontFamily: true,
-              showFontSize: true,
-              showDividers: true,
-
-              showSmallButton: false,
-              showInlineCode: false,
-              showCodeBlock: false,
-              showDirection: false,
-              showSearchButton: false,
-              showSubscript: false,
-              showSuperscript: false,
-              showLineHeightButton: false,
-
-              embedButtons: FlutterQuillEmbeds.toolbarButtons(),
-
-              color: widget.categoryColor.withOpacity(0.05),
-              axis: Axis.horizontal,
-
-              buttonOptions: QuillSimpleToolbarButtonOptions(
-                fontFamily: QuillToolbarFontFamilyButtonOptions(
-                  items: {
-                    'Arial': 'Arial',
-                    'Courier New': 'Courier New',
-                    'Georgia': 'Georgia',
-                    'Times New Roman': 'Times New Roman',
-                    'Verdana': 'Verdana',
-                    'Roboto': 'Roboto',
-                    'Clear': 'Clear',
-                  },
+          CollapsibleToolbar(
+            title: Row(
+              children: [
+                const Text(
+                  'Content Notepad',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
-                fontSize: QuillToolbarFontSizeButtonOptions(
-                  items: {
-                    '8': '8',
-                    '9': '9',
-                    '10': '10',
-                    '11': '11',
-                    '12': '12',
-                    '14': '14',
-                    '16': '16',
-                    '18': '18',
-                    '20': '20',
-                    '22': '22',
-                    '24': '24',
-                    '26': '26',
-                    '28': '28',
-                    '36': '36',
-                    '48': '48',
-                    '72': '72',
-                  },
-                  initialValue: '12',
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.add_photo_alternate, size: 18),
+                  onPressed: _insertImage,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Add image',
+                ),
+              ],
+            ),
+            categoryColor: widget.categoryColor,
+            toolbar: QuillSimpleToolbar(
+              controller: _controller,
+              config: QuillSimpleToolbarConfig(
+                toolbarIconAlignment: WrapAlignment.start,
+                toolbarIconCrossAlignment: WrapCrossAlignment.center,
+                toolbarSize: 40.0,
+
+                showBoldButton: true,
+                showItalicButton: true,
+                showUnderLineButton: true,
+                showStrikeThrough: true,
+                showColorButton: true,
+                showBackgroundColorButton: true,
+                showClearFormat: true,
+                showAlignmentButtons: true,
+                showLeftAlignment: true,
+                showCenterAlignment: true,
+                showRightAlignment: true,
+                showJustifyAlignment: true,
+                showHeaderStyle: true,
+                showListNumbers: true,
+                showListBullets: true,
+                showListCheck: true,
+                showQuote: true,
+                showIndent: true,
+                showLink: true,
+                showUndo: true,
+                showRedo: true,
+                showFontFamily: true,
+                showFontSize: true,
+                showDividers: true,
+
+                showSmallButton: false,
+                showInlineCode: false,
+                showCodeBlock: false,
+                showDirection: false,
+                showSearchButton: false,
+                showSubscript: false,
+                showSuperscript: false,
+                showLineHeightButton: false,
+
+                embedButtons: FlutterQuillEmbeds.toolbarButtons(),
+
+                color: widget.categoryColor.withOpacity(0.05),
+                axis: Axis.horizontal,
+
+                buttonOptions: QuillSimpleToolbarButtonOptions(
+                  fontFamily: QuillToolbarFontFamilyButtonOptions(
+                    items: {
+                      'Arial': 'Arial',
+                      'Courier New': 'Courier New',
+                      'Georgia': 'Georgia',
+                      'Times New Roman': 'Times New Roman',
+                      'Verdana': 'Verdana',
+                      'Roboto': 'Roboto',
+                      'Clear': 'Clear',
+                    },
+                  ),
+                  fontSize: QuillToolbarFontSizeButtonOptions(
+                    items: {
+                      '8': '8',
+                      '9': '9',
+                      '10': '10',
+                      '11': '11',
+                      '12': '12',
+                      '14': '14',
+                      '16': '16',
+                      '18': '18',
+                      '20': '20',
+                      '22': '22',
+                      '24': '24',
+                      '26': '26',
+                      '28': '28',
+                      '36': '36',
+                      '48': '48',
+                      '72': '72',
+                    },
+                    initialValue: '12',
+                  ),
                 ),
               ),
             ),

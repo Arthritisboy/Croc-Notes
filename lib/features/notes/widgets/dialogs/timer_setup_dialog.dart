@@ -1,35 +1,94 @@
+// lib/features/notes/widgets/dialogs/timer_setup_dialog.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:modular_journal/features/notes/models/note.dart';
+import 'package:path_provider/path_provider.dart';
 
 class TimerSetupDialog extends StatefulWidget {
   final Function(Duration duration, String? soundPath, bool loop, String title)
   onSave;
+  final Note? existingTimer;
 
-  const TimerSetupDialog({super.key, required this.onSave});
+  const TimerSetupDialog({super.key, required this.onSave, this.existingTimer});
 
   @override
   State<TimerSetupDialog> createState() => _TimerSetupDialogState();
 }
 
 class _TimerSetupDialogState extends State<TimerSetupDialog> {
-  final TextEditingController _nameController = TextEditingController();
+  late TextEditingController _nameController;
   int _hours = 0;
   int _minutes = 0;
   int _seconds = 0;
   String? _selectedSoundPath;
   bool _loopSound = true;
   final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _useDefaultSound = true;
+
+  // Default alarm sound path
+  String? _defaultSoundPath;
 
   @override
   void initState() {
     super.initState();
+
+    // Initialize with existing timer data if in edit mode
+    if (widget.existingTimer != null) {
+      _nameController = TextEditingController(
+        text: widget.existingTimer!.title,
+      );
+
+      // Parse duration
+      if (widget.existingTimer!.timerDuration != null) {
+        _hours = widget.existingTimer!.timerDuration!.inHours;
+        _minutes = widget.existingTimer!.timerDuration!.inMinutes.remainder(60);
+        _seconds = widget.existingTimer!.timerDuration!.inSeconds.remainder(60);
+      }
+
+      _selectedSoundPath = widget.existingTimer!.alarmSoundPath;
+      _loopSound = widget.existingTimer!.isLoopingAlarm;
+      _useDefaultSound = _selectedSoundPath == null;
+    } else {
+      _nameController = TextEditingController();
+    }
+
     _nameController.addListener(_onTextChanged);
+    _initDefaultSound();
+  }
+
+  Future<void> _initDefaultSound() async {
+    // Look for default alarm.mp3 in various locations
+    final List<String> possiblePaths = [];
+
+    // In release build
+    if (Platform.isWindows) {
+      final exeDir = Directory(Platform.resolvedExecutable).parent;
+      possiblePaths.add('${exeDir.path}\\assets\\sounds\\alarm.mp3');
+      possiblePaths.add('${exeDir.path}\\alarm.mp3');
+    }
+
+    // In debug build
+    possiblePaths.add('${Directory.current.path}\\assets\\sounds\\alarm.mp3');
+    possiblePaths.add('assets/sounds/alarm.mp3');
+
+    // In app support directory
+    final appDir = await getApplicationSupportDirectory();
+    possiblePaths.add('${appDir.path}\\alarm.mp3');
+
+    for (final path in possiblePaths) {
+      final file = File(path);
+      if (await file.exists()) {
+        _defaultSoundPath = path;
+        debugPrint('Found default alarm at: $path');
+        break;
+      }
+    }
   }
 
   void _onTextChanged() {
-    setState(() {}); // Rebuild to update button state
+    setState(() {});
   }
 
   @override
@@ -49,16 +108,31 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
     if (result != null) {
       setState(() {
         _selectedSoundPath = result.files.single.path;
+        _useDefaultSound = false;
       });
+      await _playPreview();
+    }
+  }
 
-      // Preview sound
+  Future<void> _useDefaultSoundToggle(bool? value) async {
+    setState(() {
+      _useDefaultSound = value ?? false;
+      if (_useDefaultSound) {
+        _selectedSoundPath = null;
+      }
+    });
+
+    if (_useDefaultSound && _defaultSoundPath != null) {
       await _playPreview();
     }
   }
 
   Future<void> _playPreview() async {
-    if (_selectedSoundPath != null) {
-      await _audioPlayer.play(DeviceFileSource(_selectedSoundPath!));
+    final soundToPlay = _useDefaultSound
+        ? _defaultSoundPath
+        : _selectedSoundPath;
+    if (soundToPlay != null) {
+      await _audioPlayer.play(DeviceFileSource(soundToPlay));
     }
   }
 
@@ -77,6 +151,8 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isEditing = widget.existingTimer != null;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
@@ -96,28 +172,33 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
                       color: Colors.orange.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
-                      Icons.timer,
+                    child: Icon(
+                      isEditing ? Icons.edit : Icons.timer,
                       color: Colors.orange,
                       size: 24,
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Set Timer',
-                          style: TextStyle(
+                          isEditing ? 'Edit Timer' : 'Set Timer',
+                          style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'Name your timer and choose duration',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                          isEditing
+                              ? 'Modify timer settings'
+                              : 'Name your timer and choose duration',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade400,
+                          ),
                         ),
                       ],
                     ),
@@ -137,7 +218,7 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
               TextField(
                 controller: _nameController,
                 decoration: InputDecoration(
-                  hintText: 'Enter timer name (optional)',
+                  hintText: 'Enter timer name',
                   hintStyle: TextStyle(color: Colors.grey.shade400),
                   prefixIcon: const Icon(Icons.label, color: Colors.orange),
                   border: OutlineInputBorder(
@@ -198,83 +279,106 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
 
               const SizedBox(height: 20),
 
-              // Sound picker
+              // Sound selection
               const Text(
                 'Alarm Sound',
                 style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
               ),
               const SizedBox(height: 8),
 
-              InkWell(
-                onTap: _pickSound,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade700),
-                    borderRadius: BorderRadius.circular(12),
-                    color: Colors.grey.shade900,
-                  ),
+              // Default sound option
+              if (_defaultSoundPath != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
                   child: Row(
                     children: [
-                      Icon(
-                        _selectedSoundPath == null
-                            ? Icons.music_note
-                            : Icons.audio_file,
-                        color: Colors.orange,
+                      Checkbox(
+                        value: _useDefaultSound,
+                        onChanged: _useDefaultSoundToggle,
+                        activeColor: Colors.orange,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _selectedSoundPath == null
-                                  ? 'Tap to select MP3 file'
-                                  : _selectedSoundPath!.split('/').last,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: _selectedSoundPath == null
-                                    ? Colors.grey.shade400
-                                    : Colors.white,
-                              ),
-                            ),
-                            if (_selectedSoundPath != null) ...[
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  TextButton.icon(
-                                    onPressed: _playPreview,
-                                    icon: const Icon(
-                                      Icons.play_arrow,
-                                      size: 14,
-                                    ),
-                                    label: const Text('Preview'),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: Colors.green,
-                                      padding: EdgeInsets.zero,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  TextButton.icon(
-                                    onPressed: _stopPreview,
-                                    icon: const Icon(Icons.stop, size: 14),
-                                    label: const Text('Stop'),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: Colors.red,
-                                      padding: EdgeInsets.zero,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
+                      const Expanded(
+                        child: Text(
+                          'Use default alarm sound',
+                          style: TextStyle(fontSize: 14),
                         ),
                       ),
-                      const Icon(Icons.folder_open, color: Colors.grey),
                     ],
                   ),
                 ),
-              ),
+
+              // Custom sound picker
+              if (!_useDefaultSound)
+                InkWell(
+                  onTap: _pickSound,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade700),
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.grey.shade900,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _selectedSoundPath == null
+                              ? Icons.music_note
+                              : Icons.audio_file,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedSoundPath == null
+                                    ? 'Tap to select MP3 file'
+                                    : _selectedSoundPath!.split('/').last,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: _selectedSoundPath == null
+                                      ? Colors.grey.shade400
+                                      : Colors.white,
+                                ),
+                              ),
+                              if (_selectedSoundPath != null) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    TextButton.icon(
+                                      onPressed: _playPreview,
+                                      icon: const Icon(
+                                        Icons.play_arrow,
+                                        size: 14,
+                                      ),
+                                      label: const Text('Preview'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.green,
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    TextButton.icon(
+                                      onPressed: _stopPreview,
+                                      icon: const Icon(Icons.stop, size: 14),
+                                      label: const Text('Stop'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.red,
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.folder_open, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
 
               const SizedBox(height: 16),
 
@@ -323,7 +427,7 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
                           : () {
                               widget.onSave(
                                 _getDuration(),
-                                _selectedSoundPath,
+                                _useDefaultSound ? null : _selectedSoundPath,
                                 _loopSound,
                                 _nameController.text.trim(),
                               );
@@ -337,7 +441,7 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: const Text('Set Timer'),
+                      child: Text(isEditing ? 'Save Changes' : 'Set Timer'),
                     ),
                   ),
                 ],
