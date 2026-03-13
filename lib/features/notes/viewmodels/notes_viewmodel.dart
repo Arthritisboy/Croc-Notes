@@ -117,6 +117,22 @@ class NotesViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void resetTimerItem(String itemId) {
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        for (var item in tab.checklistItems) {
+          if (item.id == itemId) {
+            item.resetTimer();
+            updateNote(item);
+            debugPrint('Reset timer item: $itemId');
+            return;
+          }
+        }
+      }
+    }
+    debugPrint('Timer item not found: $itemId');
+  }
+
   // LOAD DATA FROM DATABASE
   Future<void> loadData() async {
     try {
@@ -165,6 +181,7 @@ class NotesViewModel extends ChangeNotifier {
           );
 
           // Load checklist items - NOW WITH ALL TIMER FIELDS
+          // Load checklist items - NOW WITH ALL TIMER FIELDS
           final itemMaps = await db.query(
             'checklist_items',
             where: 'tabId = ?',
@@ -201,15 +218,29 @@ class NotesViewModel extends ChangeNotifier {
               }
             }
 
-            TimerState loadedTimerState = TimerState.idle;
+            // Determine if this is a timer item (has timer duration)
+            bool isTimerItem = timerDurationMs != null && timerDurationMs > 0;
+
+            // Get the original checkbox state from DB
+            int dbCheckboxState = itemMap['checkboxState'] as int;
+
+            // For timer items, ALWAYS set checkboxState to unchecked (0) regardless of DB
+            // For regular items, use the DB value
+            CheckboxState checkboxState = isTimerItem
+                ? CheckboxState.unchecked
+                : CheckboxState.values[dbCheckboxState];
+
+            // Debug print to verify
+            print(
+              'Loading item: ${itemMap['title']}, isTimer: $isTimerItem, checkboxState: ${checkboxState.index} (DB was: $dbCheckboxState)',
+            );
 
             // Create Note with ALL properties
             tab.checklistItems.add(
               Note(
                 id: itemMap['id'] as String,
                 title: itemMap['title'] as String,
-                checkboxState:
-                    CheckboxState.values[itemMap['checkboxState'] as int],
+                checkboxState: checkboxState, // Use the determined state
                 timerState: TimerState.idle, // Force idle on load
                 timerDuration: timerDurationMs != null
                     ? Duration(milliseconds: timerDurationMs)

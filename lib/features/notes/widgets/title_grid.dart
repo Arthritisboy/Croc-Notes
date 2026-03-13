@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:modular_journal/data/services/timer_service.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/delete_checklist_dialog.dart';
+import 'package:modular_journal/features/notes/widgets/dialogs/timer_complete_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../models/tab.dart';
@@ -10,6 +12,8 @@ import '../viewmodels/notes_viewmodel.dart';
 import 'custom_checkbox.dart';
 import 'dialogs/checklist_item_dialog.dart';
 import 'dialogs/timer_setup_dialog.dart';
+
+final timerService = TimerService();
 
 class TitleGrid extends StatefulWidget {
   final ContentTab tab;
@@ -125,13 +129,17 @@ class _TitleGridState extends State<TitleGrid> {
     _timers[item.id]?.cancel();
     _uiUpdateTimers[item.id]?.cancel();
 
-    // Create background timer for completion
-    final timer = Timer(item.timerDuration!, () {
-      _onTimerComplete(viewModel, item);
-      _uiUpdateTimers[item.id]?.cancel();
-      _uiUpdateTimers.remove(item.id);
-    });
-    _timers[item.id] = timer;
+    // Use the global timer service with item title
+    timerService.startTimer(
+      itemId: item.id,
+      itemTitle: item.title, // Pass the item title
+      duration: item.timerDuration!,
+      soundPath: item.alarmSoundPath,
+      loopSound: item.isLoopingAlarm,
+      onComplete: () {
+        _onTimerComplete(viewModel, item);
+      },
+    );
 
     // Update item state
     item.startTimer();
@@ -142,7 +150,7 @@ class _TitleGridState extends State<TitleGrid> {
   }
 
   void _pauseTimer(NotesViewModel viewModel, Note item) {
-    _timers[item.id]?.cancel();
+    timerService.stopTimer(item.id); // Stop the timer
     _uiUpdateTimers[item.id]?.cancel();
     item.pauseTimer();
     viewModel.updateNote(item);
@@ -150,70 +158,31 @@ class _TitleGridState extends State<TitleGrid> {
   }
 
   void _resetTimer(NotesViewModel viewModel, Note item) {
-    _timers[item.id]?.cancel();
+    timerService.stopTimer(item.id); // Stop the timer
+    timerService.stopAlarm(item.id); // Stop any playing alarm
     _uiUpdateTimers[item.id]?.cancel();
-    _stopAlarm(item.id);
     item.resetTimer();
     viewModel.updateNote(item);
     setState(() {});
   }
 
   void _onTimerComplete(NotesViewModel viewModel, Note item) {
-    _timers.remove(item.id);
     _uiUpdateTimers.remove(item.id);
-
-    // Play alarm
-    if (item.alarmSoundPath != null) {
-      _playAlarm(item);
-    }
 
     // Update item state
     item.completeTimer();
     viewModel.updateNote(item);
 
-    // Show dialog
-    _showTimerCompleteDialog(item);
+    // DON'T show dialog here - it's now handled by timer service
+    // _showTimerCompleteDialog(item);
 
     // Trigger UI update
     setState(() {});
   }
 
-  Future<void> _playAlarm(Note item) async {
-    final player = AudioPlayer();
-    _audioPlayers[item.id] = player;
-
-    if (item.isLoopingAlarm) {
-      await player.setReleaseMode(ReleaseMode.loop);
-    }
-
-    if (item.alarmSoundPath != null) {
-      await player.play(DeviceFileSource(item.alarmSoundPath!));
-    }
-  }
-
   void _stopAlarm(String itemId) {
     _audioPlayers[itemId]?.stop();
     _audioPlayers.remove(itemId);
-  }
-
-  void _showTimerCompleteDialog(Note item) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('⏰ Timer Complete'),
-        content: Text('The timer for "${item.title}" has finished!'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _stopAlarm(item.id);
-              Navigator.pop(context);
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override

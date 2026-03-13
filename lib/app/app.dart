@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_quill/flutter_quill.dart'; // Add this import
-import 'package:flutter_localizations/flutter_localizations.dart'; // Add this import
+import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 import '../features/notes/viewmodels/notes_viewmodel.dart';
 import '../features/notes/views/desktop_main_view.dart';
 
@@ -13,18 +14,14 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [ChangeNotifierProvider(create: (_) => NotesViewModel())],
       child: MaterialApp(
-        title: 'Modular Journal',
-        // Add localizations delegates for FlutterQuill
+        title: 'Croc Notes',
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
-          FlutterQuillLocalizations.delegate, // Add this line
+          FlutterQuillLocalizations.delegate,
         ],
-        supportedLocales: const [
-          Locale('en', ''), // English
-          // Add more locales as needed
-        ],
+        supportedLocales: const [Locale('en', '')],
         theme: ThemeData(
           primarySwatch: Colors.blue,
           useMaterial3: true,
