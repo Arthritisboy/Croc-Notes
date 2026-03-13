@@ -1,6 +1,7 @@
 // lib/shared/widgets/window_controls.dart
 import 'package:flutter/material.dart';
 import 'package:modular_journal/core/navigation.dart';
+import 'package:modular_journal/features/notes/views/settings_view.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/exit_options_dialog.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
@@ -25,6 +26,7 @@ class _WindowControlsState extends State<WindowControls> {
   bool _isHoveringClose = false;
   bool _isHoveringMinimize = false;
   bool _isHoveringMaximize = false;
+  bool _isHoveringSettings = false; // Add this
 
   @override
   void initState() {
@@ -55,7 +57,23 @@ class _WindowControlsState extends State<WindowControls> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Minimize button - should just minimize to tray
+        // Settings button - ADD THIS FIRST (next to title)
+        _buildControlButton(
+          icon: Icons.settings,
+          color: Colors.blue,
+          isHovering: _isHoveringSettings,
+          onHover: (value) => setState(() => _isHoveringSettings = value),
+          onPressed: () {
+            debugPrint('Settings button clicked');
+            navigatorKey.currentState?.push(
+              MaterialPageRoute(builder: (context) => const SettingsView()),
+            );
+          },
+          tooltip: 'Settings',
+        ),
+        const SizedBox(width: 8),
+
+        // Minimize button
         _buildControlButton(
           icon: Icons.remove,
           color: Colors.amber,
@@ -63,7 +81,7 @@ class _WindowControlsState extends State<WindowControls> {
           onHover: (value) => setState(() => _isHoveringMinimize = value),
           onPressed: () async {
             debugPrint('Minimize button clicked - hiding to tray');
-            await windowManager.hide(); // Just hide to tray
+            await windowManager.hide();
           },
           tooltip: 'Minimize to tray',
         ),
@@ -88,7 +106,7 @@ class _WindowControlsState extends State<WindowControls> {
         ),
         const SizedBox(width: 8),
 
-        // Close button - shows the ExitOptionsDialog
+        // Close button
         _buildControlButton(
           icon: Icons.close,
           color: Colors.red,

@@ -63,7 +63,7 @@ class DatabaseService {
 
     return await openDatabase(
       dbPath,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -116,11 +116,17 @@ class DatabaseService {
       CREATE TABLE images(
         id TEXT PRIMARY KEY,
         tabId TEXT NOT NULL,
-        filePath TEXT NOT NULL,
         fileName TEXT NOT NULL,
         fileSize INTEGER,
         sortOrder INTEGER,
         FOREIGN KEY (tabId) REFERENCES tabs (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE settings(
+        key TEXT PRIMARY KEY,
+        value TEXT
       )
     ''');
   }

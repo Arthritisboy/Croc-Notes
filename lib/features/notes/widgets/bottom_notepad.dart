@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
+import 'package:modular_journal/data/services/image_storage_service.dart';
 import 'package:modular_journal/features/notes/widgets/collapsible_toolbar.dart';
+import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -35,10 +37,11 @@ class _BottomNotepadState extends State<BottomNotepad> {
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
   late String _currentTabId;
+  final ImageStorageService _imageStorage = ImageStorageService();
 
   // Debounce variables
   DateTime _lastPasteTime = DateTime.fromMillisecondsSinceEpoch(0);
-  static const int _pasteDebounceDuration = 500; // milliseconds
+  static const int _pasteDebounceDuration = 500;
 
   @override
   void initState() {
@@ -46,53 +49,41 @@ class _BottomNotepadState extends State<BottomNotepad> {
     _focusNode = FocusNode();
     _currentTabId = widget.tab.id;
     _initializeController();
-
-    // Add listener for paste events
     _focusNode.addListener(_onFocusChange);
   }
 
   void _onFocusChange() {
     if (_focusNode.hasFocus) {
-      // Register for paste events when focused
       _setupPasteListener();
     } else {
-      // Remove handler when focus lost
       HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     }
   }
 
   void _setupPasteListener() {
-    // Remove any existing handler first
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
-    // Add new handler
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
   }
 
   bool _handleKeyEvent(KeyEvent event) {
-    // Only handle key down events
     if (event is! KeyDownEvent) return false;
 
-    // Check for Ctrl+V (Windows/Linux) or Cmd+V (Mac)
     final bool isControlPressed =
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
     final bool isVKey = event.logicalKey == LogicalKeyboardKey.keyV;
 
     if (isControlPressed && isVKey) {
-      // Debounce: prevent multiple rapid calls
       final now = DateTime.now();
       if (now.difference(_lastPasteTime).inMilliseconds <
           _pasteDebounceDuration) {
-        debugPrint('Paste debounced');
-        return true; // Event handled (debounced)
+        return true;
       }
-
       _lastPasteTime = now;
       _handlePaste();
-      return true; // Event handled
+      return true;
     }
-
-    return false; // Event not handled
+    return false;
   }
 
   Future<void> _handlePaste() async {
@@ -104,7 +95,7 @@ class _BottomNotepadState extends State<BottomNotepad> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Clipboard not available on this platform'),
+              content: Text('Clipboard not available'),
               duration: Duration(seconds: 1),
             ),
           );
@@ -112,13 +103,9 @@ class _BottomNotepadState extends State<BottomNotepad> {
         return;
       }
 
-      // Read from clipboard
       final reader = await clipboard.read();
-
-      // Check for image formats using getFile API
       bool imageFound = false;
 
-      // Try each image format
       final imageFormats = [
         Formats.png,
         Formats.jpeg,
@@ -132,10 +119,8 @@ class _BottomNotepadState extends State<BottomNotepad> {
         if (reader.canProvide(format)) {
           debugPrint('Found image format: $format');
 
-          // Use a completer to handle the async file reading
           final completer = Completer<Uint8List?>();
 
-          // Use getFile to read the image data
           reader.getFile(format, (file) async {
             try {
               final bytes = await file.readAll();
@@ -147,48 +132,55 @@ class _BottomNotepadState extends State<BottomNotepad> {
             }
           });
 
-          // Wait for the file to be read
           final imageBytes = await completer.future;
 
           if (imageBytes != null && imageBytes.isNotEmpty) {
             imageFound = true;
 
-            // Determine mime type based on format
             String mimeType = 'image/png';
-            if (format == Formats.jpeg)
+            String extension = 'png';
+            if (format == Formats.jpeg) {
               mimeType = 'image/jpeg';
-            else if (format == Formats.bmp)
+              extension = 'jpg';
+            } else if (format == Formats.bmp) {
               mimeType = 'image/bmp';
-            else if (format == Formats.tiff)
+              extension = 'bmp';
+            } else if (format == Formats.tiff) {
               mimeType = 'image/tiff';
-            else if (format == Formats.webp)
+              extension = 'tiff';
+            } else if (format == Formats.webp) {
               mimeType = 'image/webp';
-            else if (format == Formats.gif)
+              extension = 'webp';
+            } else if (format == Formats.gif) {
               mimeType = 'image/gif';
+              extension = 'gif';
+            }
 
-            // Insert image at current cursor position
+            final tempDir = await Directory.systemTemp.createTemp();
+            final fileName =
+                'pasted_${DateTime.now().millisecondsSinceEpoch}.$extension';
+            final tempFile = File(path.join(tempDir.path, fileName));
+            await tempFile.writeAsBytes(imageBytes);
+
+            final savedFileName = await _imageStorage.saveImage(
+              tempFile,
+              customName: fileName,
+            );
+
             final base64Image = base64Encode(imageBytes);
             final index = _controller.selection.baseOffset;
 
-            // Ensure we have a valid index
             if (index >= 0) {
               _controller.document.insert(
                 index,
                 BlockEmbed.image('data:$mimeType;base64,$base64Image'),
               );
 
-              // Save to ViewModel's image list
-              final timestamp = DateTime.now().millisecondsSinceEpoch;
-              final fileName = 'pasted_image_$timestamp.png';
-              final tempDir = await Directory.systemTemp.createTemp();
-              final tempFile = File('${tempDir.path}/$fileName');
-              await tempFile.writeAsBytes(imageBytes);
-
               final viewModel = Provider.of<NotesViewModel>(
                 context,
                 listen: false,
               );
-              viewModel.addImage(widget.tab.id, tempFile.path);
+              viewModel.addImage(widget.tab.id, savedFileName);
 
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -200,16 +192,20 @@ class _BottomNotepadState extends State<BottomNotepad> {
               }
             }
 
-            break; // Exit loop once we've processed an image
+            try {
+              await tempFile.delete();
+              await tempDir.delete();
+            } catch (e) {
+              debugPrint('Error cleaning up temp files: $e');
+            }
+
+            break;
           }
         }
       }
 
       if (!imageFound) {
-        // Check for plain text as fallback
         if (reader.canProvide(Formats.plainText)) {
-          debugPrint('No image found, letting Quill handle text paste');
-          // Let Quill handle text paste normally
           return;
         } else {
           if (mounted) {
@@ -233,7 +229,6 @@ class _BottomNotepadState extends State<BottomNotepad> {
   }
 
   void _initializeController() {
-    // Initialize Quill controller with existing content
     if (widget.tab.contentNotepad.isNotEmpty &&
         widget.tab.contentNotepad != '[]' &&
         widget.tab.contentNotepad != '') {
@@ -247,9 +242,7 @@ class _BottomNotepadState extends State<BottomNotepad> {
             if (parsed is List) {
               deltaJson = parsed;
             }
-          } catch (e) {
-            // Not valid JSON, treat as plain text
-          }
+          } catch (e) {}
         }
 
         if (deltaJson != null && deltaJson.isNotEmpty) {
@@ -273,7 +266,6 @@ class _BottomNotepadState extends State<BottomNotepad> {
       _controller = QuillController.basic();
     }
 
-    // Listen to changes to save automatically
     _controller.document.changes.listen((event) {
       if (_controller.document.isEmpty()) {
         final viewModel = Provider.of<NotesViewModel>(context, listen: false);
@@ -309,6 +301,8 @@ class _BottomNotepadState extends State<BottomNotepad> {
   }
 
   Future<void> _insertImage() async {
+    debugPrint('🖼️ BottomNotepad: Starting image insertion');
+
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -317,10 +311,17 @@ class _BottomNotepadState extends State<BottomNotepad> {
       );
 
       if (pickedFile != null) {
+        debugPrint('✅ Image picked: ${pickedFile.path}');
+
         final bytes = await File(pickedFile.path).readAsBytes();
         final base64Image = base64Encode(bytes);
 
+        final tempFile = File(pickedFile.path);
+        final fileName = await _imageStorage.saveImage(tempFile);
+        debugPrint('✅ Image saved with filename: $fileName');
+
         final index = _controller.selection.baseOffset;
+
         if (index >= 0) {
           _controller.document.insert(
             index,
@@ -328,10 +329,14 @@ class _BottomNotepadState extends State<BottomNotepad> {
           );
 
           final viewModel = Provider.of<NotesViewModel>(context, listen: false);
-          viewModel.addImage(widget.tab.id, pickedFile.path);
+          await viewModel.addImage(widget.tab.id, fileName);
+          debugPrint('✅ Filename saved to database: $fileName');
         }
+      } else {
+        debugPrint('❌ No image picked');
       }
     } catch (e) {
+      debugPrint('❌ Error inserting image: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -353,20 +358,13 @@ class _BottomNotepadState extends State<BottomNotepad> {
       child: Column(
         children: [
           CollapsibleToolbar(
-            title: Row(
+            title: const Row(
               children: [
-                const Text(
+                Text(
                   'Content Notepad',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.add_photo_alternate, size: 18),
-                  onPressed: _insertImage,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  tooltip: 'Add image',
-                ),
+                Spacer(),
               ],
             ),
             categoryColor: widget.categoryColor,
@@ -411,7 +409,63 @@ class _BottomNotepadState extends State<BottomNotepad> {
                 showSuperscript: false,
                 showLineHeightButton: false,
 
-                embedButtons: FlutterQuillEmbeds.toolbarButtons(),
+                // Configure the image button to use your storage
+                embedButtons: FlutterQuillEmbeds.toolbarButtons(
+                  imageButtonOptions: QuillToolbarImageButtonOptions(
+                    imageButtonConfig: QuillToolbarImageConfig(
+                      onImageInsertCallback:
+                          (String imagePath, QuillController controller) async {
+                            debugPrint(
+                              '🖼️ Image inserted via toolbar: $imagePath',
+                            );
+
+                            try {
+                              final file = File(imagePath);
+                              if (!await file.exists()) {
+                                debugPrint(
+                                  '❌ Image file does not exist: $imagePath',
+                                );
+                                return;
+                              }
+
+                              // Save using your ImageStorageService
+                              final fileName = await _imageStorage.saveImage(
+                                file,
+                              );
+                              debugPrint(
+                                '✅ Image saved with filename: $fileName',
+                              );
+
+                              // Save to database
+                              final viewModel = Provider.of<NotesViewModel>(
+                                context,
+                                listen: false,
+                              );
+                              await viewModel.addImage(widget.tab.id, fileName);
+
+                              // Explicitly insert the image using the controller
+                              final bytes = await file.readAsBytes();
+                              final base64Image = base64Encode(bytes);
+                              final index = controller.selection.baseOffset;
+
+                              if (index >= 0) {
+                                controller.document.insert(
+                                  index,
+                                  BlockEmbed.image(
+                                    'data:image/jpeg;base64,$base64Image',
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              debugPrint('❌ Error saving image: $e');
+                            }
+                          },
+                      onImageInsertedCallback: (String imagePath) async {
+                        debugPrint('📸 Image insertion completed: $imagePath');
+                      },
+                    ),
+                  ),
+                ),
 
                 color: widget.categoryColor.withOpacity(0.05),
                 axis: Axis.horizontal,
@@ -471,9 +525,12 @@ class _BottomNotepadState extends State<BottomNotepad> {
                   padding: const EdgeInsets.all(8),
                   scrollable: true,
                   scrollBottomInset: 0.0,
-                  embedBuilders: kIsWeb
-                      ? FlutterQuillEmbeds.editorWebBuilders()
-                      : FlutterQuillEmbeds.editorBuilders(),
+                  embedBuilders: [
+                    // This is what actually renders the images in the editor
+                    ...kIsWeb
+                        ? FlutterQuillEmbeds.editorWebBuilders()
+                        : FlutterQuillEmbeds.editorBuilders(),
+                  ],
                 ),
               ),
             ),

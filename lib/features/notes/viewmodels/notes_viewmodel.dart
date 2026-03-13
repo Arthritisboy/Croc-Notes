@@ -643,18 +643,17 @@ class NotesViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> addImage(String tabId, String imagePath) async {
+  Future<void> addImage(String tabId, String fileName) async {
     for (var category in _categories) {
       for (var tab in category.tabs) {
         if (tab.id == tabId) {
-          tab.imagePaths = [...tab.imagePaths, imagePath];
+          tab.imagePaths = [...tab.imagePaths, fileName];
 
           final db = await _db.database;
           await db.insert('images', {
-            'id': imagePath,
+            'id': fileName,
             'tabId': tabId,
-            'filePath': await _db.getImagesDirectory() + '/$imagePath',
-            'fileName': imagePath,
+            'fileName': fileName,
             'fileSize': 0,
             'sortOrder': tab.imagePaths.length - 1,
           });
