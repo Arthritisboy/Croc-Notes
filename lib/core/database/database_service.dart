@@ -1,4 +1,6 @@
+// lib/core/database/database_service.dart
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,6 +13,37 @@ class DatabaseService {
 
   static Database? _database;
 
+  // Get the app data directory (where the executable is)
+  Future<String> getAppDataDirectory() async {
+    if (Platform.isWindows) {
+      // For Windows, use the directory where the executable is located
+      final executablePath = Platform.resolvedExecutable;
+      final appDir = path.dirname(executablePath);
+
+      // Create a 'data' subfolder to keep things organized
+      final dataDir = path.join(appDir, 'data');
+      final dataDirectory = Directory(dataDir);
+
+      if (!await dataDirectory.exists()) {
+        await dataDirectory.create(recursive: true);
+        debugPrint('Created data directory: $dataDir');
+      }
+
+      return dataDir;
+    } else {
+      // For other platforms, fallback to app documents directory
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final appDir = path.join(documentsDir.path, 'CrocNotes');
+      final appDirectory = Directory(appDir);
+
+      if (!await appDirectory.exists()) {
+        await appDirectory.create(recursive: true);
+      }
+
+      return appDir;
+    }
+  }
+
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDatabase();
@@ -18,17 +51,19 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    final documentsDir = await getApplicationDocumentsDirectory();
-    final dbPath = path.join(documentsDir.path, 'journal_app.db');
+    final appDir = await getAppDataDirectory();
+    final dbPath = path.join(appDir, 'croc_notes.db'); // Changed filename
 
     if (Platform.isWindows) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
 
+    debugPrint('Database path: $dbPath');
+
     return await openDatabase(
       dbPath,
-      version: 3, // Increment to 3
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -91,24 +126,21 @@ class DatabaseService {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    print('Upgrading database from version $oldVersion to $newVersion');
+    debugPrint('Upgrading database from version $oldVersion to $newVersion');
 
-    // Upgrade to version 2 (add colorValue to tabs)
     if (oldVersion < 2) {
       try {
         await db.execute(
           'ALTER TABLE tabs ADD COLUMN colorValue INTEGER DEFAULT 0',
         );
-        print('Added colorValue column to tabs table');
+        debugPrint('Added colorValue column to tabs table');
       } catch (e) {
-        print('Error adding colorValue column: $e');
+        debugPrint('Error adding colorValue column: $e');
       }
     }
 
-    // Upgrade to version 3 (add timer fields to checklist_items)
     if (oldVersion < 3) {
       try {
-        // Check if columns already exist (optional, but safe)
         final tableInfo = await db.rawQuery(
           'PRAGMA table_info(checklist_items)',
         );
@@ -120,64 +152,55 @@ class DatabaseService {
           await db.execute(
             'ALTER TABLE checklist_items ADD COLUMN timerState INTEGER DEFAULT 0',
           );
-          print('Added timerState column');
         }
-
         if (!existingColumns.contains('timerEndTime')) {
           await db.execute(
             'ALTER TABLE checklist_items ADD COLUMN timerEndTime TEXT',
           );
-          print('Added timerEndTime column');
         }
-
         if (!existingColumns.contains('timerDuration')) {
           await db.execute(
             'ALTER TABLE checklist_items ADD COLUMN timerDuration INTEGER',
           );
-          print('Added timerDuration column');
         }
-
         if (!existingColumns.contains('alarmSoundPath')) {
           await db.execute(
             'ALTER TABLE checklist_items ADD COLUMN alarmSoundPath TEXT',
           );
-          print('Added alarmSoundPath column');
         }
-
         if (!existingColumns.contains('isLoopingAlarm')) {
           await db.execute(
             'ALTER TABLE checklist_items ADD COLUMN isLoopingAlarm INTEGER DEFAULT 0',
           );
-          print('Added isLoopingAlarm column');
         }
-
         if (!existingColumns.contains('timerStartTime')) {
           await db.execute(
             'ALTER TABLE checklist_items ADD COLUMN timerStartTime TEXT',
           );
-          print('Added timerStartTime column');
         }
-
         if (!existingColumns.contains('elapsedTime')) {
           await db.execute(
             'ALTER TABLE checklist_items ADD COLUMN elapsedTime INTEGER',
           );
-          print('Added elapsedTime column');
         }
 
-        print('Successfully added all timer columns to checklist_items table');
+        debugPrint(
+          'Successfully added all timer columns to checklist_items table',
+        );
       } catch (e) {
-        print('Error adding timer columns: $e');
+        debugPrint('Error adding timer columns: $e');
       }
     }
   }
 
+  // Updated to use app directory
   Future<String> getImagesDirectory() async {
-    final documentsDir = await getApplicationDocumentsDirectory();
-    final imagesDir = Directory(path.join(documentsDir.path, 'journal_images'));
+    final appDir = await getAppDataDirectory();
+    final imagesDir = Directory(path.join(appDir, 'images'));
 
     if (!await imagesDir.exists()) {
       await imagesDir.create(recursive: true);
+      debugPrint('Created images directory: ${imagesDir.path}');
     }
 
     return imagesDir.path;
