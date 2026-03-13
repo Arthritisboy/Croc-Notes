@@ -65,6 +65,9 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
     // In release build
     if (Platform.isWindows) {
       final exeDir = Directory(Platform.resolvedExecutable).parent;
+      possiblePaths.add(
+        '${exeDir.path}\\data\\flutter_assets\\assets\\sounds\\alarm.mp3',
+      );
       possiblePaths.add('${exeDir.path}\\assets\\sounds\\alarm.mp3');
       possiblePaths.add('${exeDir.path}\\alarm.mp3');
     }
