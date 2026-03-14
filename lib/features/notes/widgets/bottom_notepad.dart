@@ -137,50 +137,48 @@ class _BottomNotepadState extends State<BottomNotepad> {
           if (imageBytes != null && imageBytes.isNotEmpty) {
             imageFound = true;
 
-            String mimeType = 'image/png';
+            // Determine extension based on format
             String extension = 'png';
             if (format == Formats.jpeg) {
-              mimeType = 'image/jpeg';
               extension = 'jpg';
             } else if (format == Formats.bmp) {
-              mimeType = 'image/bmp';
               extension = 'bmp';
             } else if (format == Formats.tiff) {
-              mimeType = 'image/tiff';
               extension = 'tiff';
             } else if (format == Formats.webp) {
-              mimeType = 'image/webp';
               extension = 'webp';
             } else if (format == Formats.gif) {
-              mimeType = 'image/gif';
               extension = 'gif';
             }
 
-            final tempDir = await Directory.systemTemp.createTemp();
+            // Create a unique filename
             final fileName =
                 'pasted_${DateTime.now().millisecondsSinceEpoch}.$extension';
-            final tempFile = File(path.join(tempDir.path, fileName));
-            await tempFile.writeAsBytes(imageBytes);
 
-            final savedFileName = await _imageStorage.saveImage(
-              tempFile,
-              customName: fileName,
-            );
+            // Save directly to your images folder
+            final imagesDir = await _imageStorage.getImagesDirectory();
+            final imagePath = path.join(imagesDir, fileName);
 
-            final base64Image = base64Encode(imageBytes);
+            // Write the file directly
+            final imageFile = File(imagePath);
+            await imageFile.writeAsBytes(imageBytes);
+
+            debugPrint('✅ Image saved directly to: $imagePath');
+
+            // Insert the file path into Quill
             final index = _controller.selection.baseOffset;
-
             if (index >= 0) {
               _controller.document.insert(
                 index,
-                BlockEmbed.image('data:$mimeType;base64,$base64Image'),
+                BlockEmbed.image(imagePath), // Use the actual file path
               );
 
+              // Save the filename to database
               final viewModel = Provider.of<NotesViewModel>(
                 context,
                 listen: false,
               );
-              viewModel.addImage(widget.tab.id, savedFileName);
+              await viewModel.addImage(widget.tab.id, fileName);
 
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -192,21 +190,14 @@ class _BottomNotepadState extends State<BottomNotepad> {
               }
             }
 
-            try {
-              await tempFile.delete();
-              await tempDir.delete();
-            } catch (e) {
-              debugPrint('Error cleaning up temp files: $e');
-            }
-
-            break;
+            break; // Exit loop once we've processed an image
           }
         }
       }
 
       if (!imageFound) {
         if (reader.canProvide(Formats.plainText)) {
-          return;
+          return; // Let Quill handle text paste
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
