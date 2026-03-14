@@ -103,7 +103,9 @@ flutter run -d windows
 flutter build windows --release
 ```
 
-### 🎮 How to Use
+
+
+## 🎮 How to Use
 Getting Started
 Create your first category using the ➕ button
 
@@ -113,7 +115,8 @@ Start writing in the notepads
 
 Create checklist items or timers
 
-Keyboard Shortcuts
+## ⌨️Keyboard Shortcuts
+```
 Shortcut	Action
 Ctrl+V	Paste text or images
 Ctrl+B	Bold text
@@ -121,17 +124,21 @@ Ctrl+I	Italic text
 Ctrl+U	Underline text
 Ctrl+Z	Undo
 Ctrl+Y	Redo
-Timer Controls
+```
+
+## ⏰Timer Controls
 Click checkbox to start timer
 
 Click again (X) to pause
 
 Click again (⬜) to reset
 
-Double-click timer to edit properties
+Long-press timer to edit properties
 
 
-### 🛠️ Built With
+
+
+## 🛠️ Built With
 Flutter - UI framework
 
 SQLite - Local database
@@ -147,15 +154,15 @@ audioplayers - Alarm sounds
 super_clipboard - Clipboard image paste
 
 
-🔧 Configuration
+## 🔧 Configuration
 Default Alarm Sound
 Place your alarm.mp3 in assets/sounds/ before building.
 
 
-📝 License
+## 📝 License
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-🙏 Acknowledgments
+## 🙏 Acknowledgments
 Icons from FontAwesome and Material Icons
 
 Inspired by AHOY note-taking software
