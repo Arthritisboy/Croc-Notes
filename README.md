@@ -146,22 +146,7 @@ audioplayers - Alarm sounds
 
 super_clipboard - Clipboard image paste
 
-### 📁 Project Structure
-text
-croc_notes/
-├── lib/
-│   ├── core/                 # Core services (database, navigation, etc.)
-│   ├── features/             # Feature modules
-│   │   └── notes/            # Notes feature
-│   │       ├── models/       # Data models
-│   │       ├── viewmodels/   # Business logic
-│   │       ├── views/        # UI screens
-│   │       └── widgets/      # Reusable widgets
-│   └── shared/                # Shared widgets & utilities
-├── assets/
-│   ├── icon/                  # App icons
-│   └── sounds/                 # Default alarm sound
-└── windows/                    # Windows-specific code
+
 🔧 Configuration
 Default Alarm Sound
 Place your alarm.mp3 in assets/sounds/ before building.
