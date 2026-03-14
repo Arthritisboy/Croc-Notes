@@ -78,7 +78,7 @@ void main() async {
               itemTitle: itemTitle,
               onStopAlarm: () {
                 debugPrint('Stopping alarm for item $itemId');
-                timerService.stopAlarm(itemId); // Stop the alarm
+                timerService.stopAlarm(itemId);
               },
               onDismiss: () {
                 debugPrint('Timer dialog dismissed for $itemTitle');
@@ -89,6 +89,12 @@ void main() async {
                     listen: false,
                   );
                   viewModel.resetTimerItem(itemId);
+
+                  // Also ensure checkbox is set to unchecked
+                  viewModel.updateTimerItemCheckbox(
+                    itemId,
+                    CheckboxState.unchecked,
+                  );
                 } catch (e) {
                   debugPrint('Error updating note: $e');
                 }
@@ -136,12 +142,12 @@ Future<void> _setupTrayMenu() async {
   try {
     final menu = Menu(
       items: [
-        MenuItem(key: 'show', label: 'Show Window'),
-        MenuItem(key: 'hide', label: 'Hide Window'),
+        MenuItem(key: 'croc_show', label: 'Show Window'),
+        MenuItem(key: 'croc_hide', label: 'Hide Window'),
         MenuItem.separator(),
-        MenuItem(key: 'about', label: 'About Croc Notes'),
+        MenuItem(key: 'croc_about', label: 'About Croc Notes'),
         MenuItem.separator(),
-        MenuItem(key: 'quit', label: 'Exit Completely'),
+        MenuItem(key: 'croc_quit', label: 'Exit Completely'),
       ],
     );
 
@@ -247,9 +253,14 @@ class _TrayListener implements TrayListener {
 
   @override
   void onTrayIconMouseUp() => debugPrint('Tray icon mouse up');
+
   @override
   void onTrayIconRightMouseDown() {
-    trayManager.popUpContextMenu();
+    debugPrint('Tray icon right mouse down - showing context menu');
+    // Small delay to ensure the menu appears
+    Future.delayed(const Duration(milliseconds: 10), () {
+      trayManager.popUpContextMenu();
+    });
   }
 
   @override

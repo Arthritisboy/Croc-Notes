@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:modular_journal/core/database/database_service.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/delete_category_dialog.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/delete_tab_dialog.dart';
+import 'package:modular_journal/features/notes/widgets/title_grid.dart';
 import '../models/note.dart';
 import '../models/category.dart';
 import '../models/tab.dart';
@@ -133,6 +134,73 @@ class NotesViewModel extends ChangeNotifier {
     debugPrint('Timer item not found: $itemId');
   }
 
+  Future<void> _setupActiveTimers() async {
+    final now = DateTime.now();
+
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        for (var item in tab.checklistItems) {
+          // Check if this is a timer item that should be running
+          if (item.timerDuration != null &&
+              item.timerState == TimerState.running &&
+              item.timerStartTime != null) {
+            // Calculate elapsed time
+            final elapsed = now.difference(item.timerStartTime!);
+            final totalDuration = item.timerDuration!;
+
+            if (elapsed < totalDuration) {
+              // Timer is still running - calculate remaining time
+              final remaining = totalDuration - elapsed;
+
+              debugPrint(
+                '⏰ Restarting active timer: ${item.title}, remaining: ${remaining.inSeconds}s',
+              );
+
+              // Register with timer service
+              timerService.startTimer(
+                itemId: item.id,
+                itemTitle: item.title,
+                duration: remaining,
+                soundPath: item.alarmSoundPath,
+                loopSound: item.isLoopingAlarm,
+                onComplete: () {
+                  debugPrint('Timer completed: ${item.title}');
+
+                  // Update the item state
+                  item.completeTimer();
+
+                  // IMPORTANT: Set checkbox state to unchecked when completed
+                  item.checkboxState = CheckboxState.unchecked;
+
+                  // Update in database
+                  updateNote(item);
+
+                  // Force UI refresh
+                  notifyListeners();
+                },
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void updateTimerItemCheckbox(String itemId, CheckboxState state) {
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        for (var item in tab.checklistItems) {
+          if (item.id == itemId) {
+            item.checkboxState = state;
+            updateNote(item);
+            notifyListeners();
+            return;
+          }
+        }
+      }
+    }
+  }
+
   // LOAD DATA FROM DATABASE
   Future<void> loadData() async {
     try {
@@ -180,14 +248,15 @@ class NotesViewModel extends ChangeNotifier {
             checklistItems: [],
           );
 
-          // Load checklist items - NOW WITH ALL TIMER FIELDS
-          // Load checklist items - NOW WITH ALL TIMER FIELDS
+          // Load checklist items
           final itemMaps = await db.query(
             'checklist_items',
             where: 'tabId = ?',
             whereArgs: [tab.id],
             orderBy: 'sortOrder ASC',
           );
+
+          final now = DateTime.now();
 
           for (var itemMap in itemMaps) {
             // Extract timer fields from database
@@ -230,9 +299,37 @@ class NotesViewModel extends ChangeNotifier {
                 ? CheckboxState.unchecked
                 : CheckboxState.values[dbCheckboxState];
 
+            // Parse timer state
+            TimerState timerState = TimerState.values[timerStateIndex];
+
+            // If timer was running, calculate if it should have completed during PC off
+            if (isTimerItem) {
+              // Map timer state to checkbox state
+              switch (timerState) {
+                case TimerState.running:
+                  checkboxState = CheckboxState.checked; // Checked = running
+                  break;
+                case TimerState.paused:
+                  checkboxState = CheckboxState.crossed; // Crossed = paused
+                  break;
+                case TimerState.completed:
+                  checkboxState =
+                      CheckboxState.checked; // Keep checked when completed?
+                  break;
+                case TimerState.idle:
+                default:
+                  checkboxState = CheckboxState.unchecked; // Unchecked = idle
+                  break;
+              }
+            } else {
+              // Regular items use DB value
+              checkboxState = CheckboxState.values[dbCheckboxState];
+            }
+
             // Debug print to verify
             print(
-              'Loading item: ${itemMap['title']}, isTimer: $isTimerItem, checkboxState: ${checkboxState.index} (DB was: $dbCheckboxState)',
+              'Loading item: ${itemMap['title']}, isTimer: $isTimerItem, '
+              'timerState: ${timerState.index}, checkboxState: ${checkboxState.index}',
             );
 
             // Create Note with ALL properties
@@ -240,16 +337,18 @@ class NotesViewModel extends ChangeNotifier {
               Note(
                 id: itemMap['id'] as String,
                 title: itemMap['title'] as String,
-                checkboxState: checkboxState, // Use the determined state
-                timerState: TimerState.idle, // Force idle on load
+                checkboxState: checkboxState,
+                timerState: timerState,
                 timerDuration: timerDurationMs != null
                     ? Duration(milliseconds: timerDurationMs)
                     : null,
                 alarmSoundPath: alarmSoundPath,
                 isLoopingAlarm: isLooping == 1,
-                timerEndTime: null, // Clear any existing end time
-                timerStartTime: null, // Clear any existing start time
-                elapsedTime: null, // Clear any existing elapsed time
+                timerEndTime: timerEndTime,
+                timerStartTime: timerStartTime,
+                elapsedTime: elapsedTimeMs != null
+                    ? Duration(milliseconds: elapsedTimeMs)
+                    : null,
               ),
             );
           }
@@ -281,11 +380,47 @@ class NotesViewModel extends ChangeNotifier {
       }
 
       print('Data loaded successfully');
+
+      // After loading all data, check for timers that completed during PC off
+      // and trigger their alarms
+      await _setupActiveTimers();
+
+      await _checkForCompletedTimers();
+
       notifyListeners();
     } catch (e) {
       print('Error loading data: $e');
       _error = e.toString();
       rethrow;
+    }
+  }
+
+  Future<void> _checkForCompletedTimers() async {
+    final now = DateTime.now();
+    final completedTimers = <Note>[];
+
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        for (var item in tab.checklistItems) {
+          if (item.timerDuration != null &&
+              item.timerState == TimerState.completed) {
+            completedTimers.add(item);
+          }
+        }
+      }
+    }
+
+    if (completedTimers.isNotEmpty) {
+      debugPrint(
+        'Found ${completedTimers.length} timers that completed while PC was off',
+      );
+
+      // Trigger timer service for each completed timer
+      for (var item in completedTimers) {
+        // Use timer service to show notification and play alarm
+        // You'll need to access the global timerService
+        timerService.triggerTimerCompletion(item.id, item.title);
+      }
     }
   }
 

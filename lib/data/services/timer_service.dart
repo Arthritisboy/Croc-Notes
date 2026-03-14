@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:modular_journal/features/notes/models/note.dart';
 import 'package:path_provider/path_provider.dart';
 
 class TimerService {
@@ -252,6 +253,56 @@ class TimerService {
 
   bool isTimerRunning(String itemId) {
     return _activeTimers.containsKey(itemId);
+  }
+
+  Future<void> checkForCompletedTimers(List<Note> allTimerItems) async {
+    final now = DateTime.now();
+
+    for (final item in allTimerItems) {
+      if (item.timerState == TimerState.running &&
+          item.timerStartTime != null &&
+          item.timerDuration != null) {
+        final elapsed = now.difference(item.timerStartTime!);
+
+        if (elapsed >= item.timerDuration!) {
+          // Timer completed while PC was off
+          debugPrint('⏰ Timer completed while PC was off: ${item.title}');
+
+          // Trigger completion
+          await triggerTimerCompletion(item.id, item.title);
+
+          // Update item state
+          item.completeTimer();
+
+          // Save to database
+          if (onTimerComplete != null) {
+            onTimerComplete!(item.id, item.title);
+          }
+        } else if (elapsed.inSeconds > 0) {
+          // Timer is still running, update the UI to show correct remaining time
+          debugPrint(
+            '⏰ Timer still running after PC off: ${item.title}, elapsed: ${elapsed.inSeconds}s',
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> triggerTimerCompletion(String itemId, String itemTitle) async {
+    debugPrint(
+      '⏰ Triggering completion for timer that finished while PC was off: $itemTitle',
+    );
+    if (onShowWindow != null) {
+      onShowWindow!();
+    }
+
+    // Show notification
+    await _showNotification(itemId, itemTitle);
+
+    // Trigger callback
+    if (onTimerComplete != null) {
+      onTimerComplete!(itemId, itemTitle);
+    }
   }
 
   void dispose() {

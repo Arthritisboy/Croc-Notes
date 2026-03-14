@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:modular_journal/core/database/database_service.dart';
 import 'package:modular_journal/data/services/backup_service.dart';
 import 'package:modular_journal/data/services/image_storage_service.dart';
+import 'package:modular_journal/data/services/windows_startup_service.dart';
 import 'package:path_provider/path_provider.dart';
 
 class SettingsView extends StatefulWidget {
@@ -18,6 +19,28 @@ class _SettingsViewState extends State<SettingsView> {
   final BackupService _backupService = BackupService();
   bool _isExporting = false;
   bool _isImporting = false;
+  final StartupService _startupService = StartupService();
+  bool _startupEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkStartupStatus();
+  }
+
+  Future<void> _checkStartupStatus() async {
+    final enabled = await _startupService.isStartupEnabled();
+    setState(() {
+      _startupEnabled = enabled;
+    });
+  }
+
+  Future<void> _toggleStartup(bool value) async {
+    await _startupService.setStartupEnabled(value);
+    setState(() {
+      _startupEnabled = value;
+    });
+  }
 
   Future<void> _exportBackup() async {
     setState(() => _isExporting = true);
@@ -418,6 +441,40 @@ class _SettingsViewState extends State<SettingsView> {
                   ),
                 ],
               ),
+            ),
+          ),
+
+          const Divider(height: 32),
+
+          // Startup Section Header
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Startup Options',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+
+          // Run on startup toggle
+          Card(
+            child: SwitchListTile(
+              secondary: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.purple.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.power_settings_new,
+                  color: Colors.purple,
+                ),
+              ),
+              title: const Text('Run on Windows Startup'),
+              subtitle: const Text(
+                'Automatically start Croc Notes when you log in',
+              ),
+              value: _startupEnabled,
+              onChanged: _toggleStartup,
             ),
           ),
 

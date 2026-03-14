@@ -194,4 +194,39 @@ class Note {
       elapsedTime: elapsedTime ?? this.elapsedTime,
     );
   }
+
+  Duration? getRemainingTimeWithElapsed(DateTime currentTime) {
+    if (timerDuration == null) return null;
+
+    switch (timerState) {
+      case TimerState.running:
+        if (timerStartTime != null) {
+          // Calculate elapsed time including PC off period
+          final elapsed = currentTime.difference(timerStartTime!);
+          final remaining = timerDuration! - elapsed;
+          return remaining.isNegative ? Duration.zero : remaining;
+        }
+        return timerDuration;
+
+      case TimerState.paused:
+        if (elapsedTime != null) {
+          final remaining = timerDuration! - elapsedTime!;
+          return remaining.isNegative ? Duration.zero : remaining;
+        }
+        return timerDuration;
+
+      case TimerState.idle:
+      case TimerState.completed:
+        return null;
+    }
+  }
+
+  // Check if timer should have completed during PC off
+  bool shouldHaveCompleted(DateTime currentTime) {
+    if (timerState != TimerState.running || timerStartTime == null)
+      return false;
+
+    final elapsed = currentTime.difference(timerStartTime!);
+    return elapsed >= timerDuration!;
+  }
 }
