@@ -197,6 +197,107 @@ class DatabaseService {
         debugPrint('Error adding timer columns: $e');
       }
     }
+
+    // VERSION 4 MIGRATION - Fix images table schema
+    if (oldVersion < 4) {
+      try {
+        debugPrint('Starting version 4 migration for images table...');
+
+        // Check if images table exists
+        final tableInfo = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='images'",
+        );
+        final imagesTableExists = tableInfo.isNotEmpty;
+
+        if (imagesTableExists) {
+          // Get current images table schema
+          final columns = await db.rawQuery('PRAGMA table_info(images)');
+          final columnNames = columns
+              .map((col) => col['name'] as String)
+              .toList();
+
+          debugPrint('Current images table columns: $columnNames');
+
+          // Check if filePath column exists
+          final hasFilePath = columnNames.contains('filePath');
+
+          if (hasFilePath) {
+            debugPrint('Migrating images table from version 3 to 4...');
+
+            // Create a temporary table with the new schema
+            await db.execute('''
+            CREATE TABLE images_new(
+              id TEXT PRIMARY KEY,
+              tabId TEXT NOT NULL,
+              fileName TEXT NOT NULL,
+              fileSize INTEGER,
+              sortOrder INTEGER,
+              FOREIGN KEY (tabId) REFERENCES tabs (id) ON DELETE CASCADE
+            )
+          ''');
+
+            // Copy data from old table, extracting filename from filePath
+            // This handles both absolute paths and just filenames
+            await db.execute('''
+            INSERT INTO images_new (id, tabId, fileName, fileSize, sortOrder)
+            SELECT 
+              id, 
+              tabId,
+              CASE 
+                WHEN filePath LIKE '%\\%' THEN substr(filePath, lastindexof(filePath, '\\') + 1)
+                WHEN filePath LIKE '%/%' THEN substr(filePath, lastindexof(filePath, '/') + 1)
+                ELSE filePath
+              END as fileName,
+              COALESCE(fileSize, 0),
+              sortOrder
+            FROM images
+          ''');
+
+            // Get count of migrated images
+            final countResult = await db.rawQuery(
+              'SELECT COUNT(*) as count FROM images_new',
+            );
+            final imageCount = countResult.first['count'] as int;
+            debugPrint('Migrated $imageCount images to new schema');
+
+            // Drop old table
+            await db.execute('DROP TABLE images');
+
+            // Rename new table to images
+            await db.execute('ALTER TABLE images_new RENAME TO images');
+
+            debugPrint('✅ Successfully migrated images table to version 4');
+          } else {
+            debugPrint(
+              'Images table already has version 4 schema (no filePath column)',
+            );
+          }
+        } else {
+          debugPrint('Images table does not exist, skipping migration');
+        }
+      } catch (e) {
+        debugPrint('❌ Error migrating images table: $e');
+
+        // If migration fails, try to recreate the table
+        try {
+          debugPrint('Attempting to recreate images table...');
+          await db.execute('DROP TABLE IF EXISTS images');
+          await db.execute('''
+          CREATE TABLE images(
+            id TEXT PRIMARY KEY,
+            tabId TEXT NOT NULL,
+            fileName TEXT NOT NULL,
+            fileSize INTEGER,
+            sortOrder INTEGER,
+            FOREIGN KEY (tabId) REFERENCES tabs (id) ON DELETE CASCADE
+          )
+        ''');
+          debugPrint('✅ Recreated images table with version 4 schema');
+        } catch (e2) {
+          debugPrint('❌ Critical error: Could not recreate images table: $e2');
+        }
+      }
+    }
   }
 
   // Updated to use app directory
