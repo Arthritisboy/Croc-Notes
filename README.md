@@ -2,7 +2,7 @@
 
 A powerful, offline-first modular journaling app for Windows desktop (and Android planned) with rich text editing, timers, and system tray integration. Organize your thoughts like never before!
 
-![Croc Notes Banner](assets\icon\app_icon.png)
+![Croc Notes Banner](https://github.com/Arthritisboy/Croc-Notes/blob/master/assets/icon/app_icon.png)
 
 ## ✨ Features
 
@@ -63,12 +63,12 @@ A powerful, offline-first modular journaling app for Windows desktop (and Androi
 
 ### Main Interface
 
-![Main Interface](readme_pics\main_interface.png)
+![Main Interface](https://github.com/Arthritisboy/Croc-Notes/blob/master/readme_pics/main_interface.png)
 _Three-grid layout with categories sidebar_
 
 ### Timer System
 
-![Timer System](readme_pics\timer.png)
+![Timer System](https://github.com/Arthritisboy/Croc-Notes/blob/master/readme_pics/timer.png)
 _Timer items with countdown and alarm setup_
 
 ## 🚀 Installation
