@@ -1,3 +1,4 @@
+// lib/features/notes/widgets/bottom_notepad.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -265,18 +266,24 @@ class _BottomNotepadState extends State<BottomNotepad> {
       _controller = QuillController.basic();
     }
 
+    // OPTIMIZATION: Debounce auto-save
     _controller.document.changes.listen((event) {
-      if (_controller.document.isEmpty()) {
-        final viewModel = Provider.of<NotesViewModel>(context, listen: false);
-        viewModel.updateContentNotepad(widget.tab.id, '');
-        return;
-      }
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+        if (_controller.document.isEmpty()) {
+          final viewModel = Provider.of<NotesViewModel>(context, listen: false);
+          viewModel.updateContentNotepad(widget.tab.id, '');
+          return;
+        }
 
-      final viewModel = Provider.of<NotesViewModel>(context, listen: false);
-      final jsonContent = _controller.document.toDelta().toJson();
-      viewModel.updateContentNotepad(widget.tab.id, jsonEncode(jsonContent));
+        final viewModel = Provider.of<NotesViewModel>(context, listen: false);
+        final jsonContent = _controller.document.toDelta().toJson();
+        viewModel.updateContentNotepad(widget.tab.id, jsonEncode(jsonContent));
+      });
     });
   }
+
+  Timer? _debounceTimer;
 
   @override
   void didUpdateWidget(BottomNotepad oldWidget) {
@@ -291,6 +298,7 @@ class _BottomNotepadState extends State<BottomNotepad> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
@@ -408,60 +416,38 @@ class _BottomNotepadState extends State<BottomNotepad> {
                 showSuperscript: false,
                 showLineHeightButton: false,
 
-                // Configure the image button to use your storage
+                // FIXED: No double insertion!
                 embedButtons: FlutterQuillEmbeds.toolbarButtons(
                   imageButtonOptions: QuillToolbarImageButtonOptions(
                     imageButtonConfig: QuillToolbarImageConfig(
-                      onImageInsertCallback:
-                          (String imagePath, QuillController controller) async {
-                            debugPrint(
-                              '🖼️ Image inserted via toolbar: $imagePath',
-                            );
-
-                            try {
-                              final file = File(imagePath);
-                              if (!await file.exists()) {
-                                debugPrint(
-                                  '❌ Image file does not exist: $imagePath',
-                                );
-                                return;
-                              }
-
-                              // Save using your ImageStorageService
-                              final fileName = await _imageStorage.saveImage(
-                                file,
-                              );
-                              debugPrint(
-                                '✅ Image saved with filename: $fileName',
-                              );
-
-                              // Save to database
-                              final viewModel = Provider.of<NotesViewModel>(
-                                context,
-                                listen: false,
-                              );
-                              await viewModel.addImage(widget.tab.id, fileName);
-
-                              // Explicitly insert the image using the controller
-                              final bytes = await file.readAsBytes();
-                              final base64Image = base64Encode(bytes);
-                              final index = controller.selection.baseOffset;
-
-                              if (index >= 0) {
-                                controller.document.insert(
-                                  index,
-                                  BlockEmbed.image(
-                                    'data:image/jpeg;base64,$base64Image',
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              debugPrint('❌ Error saving image: $e');
-                            }
-                          },
+                      // Let Quill insert first
                       onImageInsertedCallback: (String imagePath) async {
                         debugPrint('📸 Image insertion completed: $imagePath');
+
+                        try {
+                          final file = File(imagePath);
+                          if (!await file.exists()) {
+                            debugPrint(
+                              '❌ Image file does not exist: $imagePath',
+                            );
+                            return;
+                          }
+
+                          // Save using your ImageStorageService
+                          final fileName = await _imageStorage.saveImage(file);
+                          debugPrint('✅ Image saved with filename: $fileName');
+
+                          // Save to database
+                          final viewModel = Provider.of<NotesViewModel>(
+                            context,
+                            listen: false,
+                          );
+                          await viewModel.addImage(widget.tab.id, fileName);
+                        } catch (e) {
+                          debugPrint('❌ Error saving image: $e');
+                        }
                       },
+                      // No need for onImageInsertCallback
                     ),
                   ),
                 ),
@@ -512,24 +498,26 @@ class _BottomNotepadState extends State<BottomNotepad> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(8.0),
-              child: QuillEditor(
-                controller: _controller,
-                focusNode: _focusNode,
-                scrollController: _scrollController,
-                config: QuillEditorConfig(
-                  placeholder:
-                      'Write your content here... (Ctrl+V to paste images)',
-                  autoFocus: false,
-                  expands: false,
-                  padding: const EdgeInsets.all(8),
-                  scrollable: true,
-                  scrollBottomInset: 0.0,
-                  embedBuilders: [
-                    // This is what actually renders the images in the editor
-                    ...kIsWeb
-                        ? FlutterQuillEmbeds.editorWebBuilders()
-                        : FlutterQuillEmbeds.editorBuilders(),
-                  ],
+              child: RepaintBoundary(
+                // Keep this optimization
+                child: QuillEditor(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  scrollController: _scrollController,
+                  config: QuillEditorConfig(
+                    placeholder:
+                        'Write your content here... (Ctrl+V to paste images)',
+                    autoFocus: false,
+                    expands: false,
+                    padding: const EdgeInsets.all(8),
+                    scrollable: true,
+                    scrollBottomInset: 0.0,
+                    embedBuilders: [
+                      ...kIsWeb
+                          ? FlutterQuillEmbeds.editorWebBuilders()
+                          : FlutterQuillEmbeds.editorBuilders(),
+                    ],
+                  ),
                 ),
               ),
             ),
