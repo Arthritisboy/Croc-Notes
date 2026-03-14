@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:modular_journal/core/database/database_service.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/delete_category_dialog.dart';
@@ -169,7 +171,7 @@ class NotesViewModel extends ChangeNotifier {
                   // Update the item state
                   item.completeTimer();
 
-                  // IMPORTANT: Set checkbox state to unchecked when completed
+                  // Set checkbox state to unchecked when completed
                   item.checkboxState = CheckboxState.unchecked;
 
                   // Update in database
@@ -198,6 +200,50 @@ class NotesViewModel extends ChangeNotifier {
           }
         }
       }
+    }
+  }
+
+  Future<void> _validateAlarmSoundPaths() async {
+    debugPrint('🔍 Validating alarm sound paths...');
+    int updatedCount = 0;
+
+    for (var category in _categories) {
+      for (var tab in category.tabs) {
+        for (var item in tab.checklistItems) {
+          if (item.alarmSoundPath != null && item.alarmSoundPath!.isNotEmpty) {
+            // Check if the sound file exists
+            final file = File(item.alarmSoundPath!);
+            final exists = await file.exists();
+
+            if (!exists) {
+              debugPrint(
+                '⚠️ Sound file not found: ${item.alarmSoundPath} for item: ${item.title}',
+              );
+
+              // Reset to default sound (null means use default)
+              item.alarmSoundPath = null;
+
+              // Update in database
+              final db = await _db.database;
+              await db.update(
+                'checklist_items',
+                {'alarmSoundPath': null},
+                where: 'id = ?',
+                whereArgs: [item.id],
+              );
+
+              updatedCount++;
+            }
+          }
+        }
+      }
+    }
+
+    if (updatedCount > 0) {
+      debugPrint(
+        '✅ Updated $updatedCount timer items to use default alarm sound',
+      );
+      notifyListeners();
     }
   }
 
@@ -293,40 +339,54 @@ class NotesViewModel extends ChangeNotifier {
             // Get the original checkbox state from DB
             int dbCheckboxState = itemMap['checkboxState'] as int;
 
-            // For timer items, ALWAYS set checkboxState to unchecked (0) regardless of DB
-            // For regular items, use the DB value
-            CheckboxState checkboxState = isTimerItem
-                ? CheckboxState.unchecked
-                : CheckboxState.values[dbCheckboxState];
-
             // Parse timer state
             TimerState timerState = TimerState.values[timerStateIndex];
 
             // If timer was running, calculate if it should have completed during PC off
+            if (isTimerItem &&
+                timerState == TimerState.running &&
+                timerStartTime != null) {
+              final elapsed = now.difference(timerStartTime);
+              final totalDuration = Duration(milliseconds: timerDurationMs!);
+
+              if (elapsed >= totalDuration) {
+                // Timer completed while PC was off
+                debugPrint(
+                  '⏰ Timer completed while PC was off: ${itemMap['title']}',
+                );
+                timerState = TimerState.completed;
+                timerEndTime = null;
+                timerStartTime = null;
+              } else {
+                // Timer still running
+                debugPrint(
+                  '⏰ Timer still running after PC off: ${itemMap['title']}, elapsed: ${elapsed.inSeconds}s',
+                );
+              }
+            }
+
+            // Determine checkbox state based on timer state
+            CheckboxState checkboxState;
             if (isTimerItem) {
-              // Map timer state to checkbox state
               switch (timerState) {
                 case TimerState.running:
-                  checkboxState = CheckboxState.checked; // Checked = running
+                  checkboxState = CheckboxState.checked;
                   break;
                 case TimerState.paused:
-                  checkboxState = CheckboxState.crossed; // Crossed = paused
+                  checkboxState = CheckboxState.crossed;
                   break;
                 case TimerState.completed:
-                  checkboxState =
-                      CheckboxState.checked; // Keep checked when completed?
+                  checkboxState = CheckboxState.unchecked;
                   break;
                 case TimerState.idle:
                 default:
-                  checkboxState = CheckboxState.unchecked; // Unchecked = idle
+                  checkboxState = CheckboxState.unchecked;
                   break;
               }
             } else {
-              // Regular items use DB value
               checkboxState = CheckboxState.values[dbCheckboxState];
             }
 
-            // Debug print to verify
             print(
               'Loading item: ${itemMap['title']}, isTimer: $isTimerItem, '
               'timerState: ${timerState.index}, checkboxState: ${checkboxState.index}',
@@ -381,11 +441,14 @@ class NotesViewModel extends ChangeNotifier {
 
       print('Data loaded successfully');
 
-      // After loading all data, check for timers that completed during PC off
-      // and trigger their alarms
+      // IMPORTANT: Check for completed timers FIRST
+      await _checkForCompletedTimers();
+
+      // Then set up active timers (running/paused)
       await _setupActiveTimers();
 
-      await _checkForCompletedTimers();
+      // Finally validate sound paths (this won't affect completed timers)
+      await _validateAlarmSoundPaths();
 
       notifyListeners();
     } catch (e) {
@@ -396,7 +459,6 @@ class NotesViewModel extends ChangeNotifier {
   }
 
   Future<void> _checkForCompletedTimers() async {
-    final now = DateTime.now();
     final completedTimers = <Note>[];
 
     for (var category in _categories) {
@@ -417,9 +479,18 @@ class NotesViewModel extends ChangeNotifier {
 
       // Trigger timer service for each completed timer
       for (var item in completedTimers) {
-        // Use timer service to show notification and play alarm
-        // You'll need to access the global timerService
-        timerService.triggerTimerCompletion(item.id, item.title);
+        // Get valid sound path first
+        final validPath = await timerService.getValidSoundPath(
+          item.alarmSoundPath,
+        );
+
+        // Trigger completion with validated path
+        timerService.triggerTimerCompletion(
+          item.id,
+          item.title,
+          soundPath: validPath,
+          loopSound: item.isLoopingAlarm,
+        );
       }
     }
   }

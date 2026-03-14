@@ -47,7 +47,9 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
         _seconds = widget.existingTimer!.timerDuration!.inSeconds.remainder(60);
       }
 
-      _selectedSoundPath = widget.existingTimer!.alarmSoundPath;
+      // Validate the sound path when loading for edit
+      _validateSoundPathOnLoad(widget.existingTimer!.alarmSoundPath);
+
       _loopSound = widget.existingTimer!.isLoopingAlarm;
       _useDefaultSound = _selectedSoundPath == null;
     } else {
@@ -87,6 +89,24 @@ class _TimerSetupDialogState extends State<TimerSetupDialog> {
         debugPrint('Found default alarm at: $path');
         break;
       }
+    }
+  }
+
+  Future<void> _validateSoundPathOnLoad(String? path) async {
+    if (path == null || path.isEmpty) {
+      _selectedSoundPath = null;
+      _useDefaultSound = true;
+      return;
+    }
+
+    final file = File(path);
+    if (await file.exists()) {
+      _selectedSoundPath = path;
+      _useDefaultSound = false;
+    } else {
+      debugPrint('⚠️ Custom sound file not found on load: $path');
+      _selectedSoundPath = null;
+      _useDefaultSound = true;
     }
   }
 

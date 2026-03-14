@@ -101,25 +101,53 @@ class TimerService {
     bool loopSound = false,
     required Function() onComplete,
   }) {
-    if (!_isInitialized) {
-      debugPrint('TimerService: Not initialized! Call initialize() first');
-      return;
-    }
-
     // Cancel existing timer for this item
     stopTimer(itemId);
 
     // Store the item title
     _itemTitles[itemId] = itemTitle;
 
-    final timer = Timer(duration, () {
-      _onTimerComplete(itemId, soundPath, loopSound, onComplete);
+    final timer = Timer(duration, () async {
+      // Before completing, validate the sound path
+      final validPath = await getValidSoundPath(soundPath);
+      await _onTimerComplete(itemId, validPath, loopSound, onComplete);
     });
 
     _activeTimers[itemId] = timer;
     debugPrint(
       'Timer started for item $itemId ($itemTitle), duration: $duration',
     );
+  }
+
+  Future<bool> isSoundFileValid(String? soundPath) async {
+    if (soundPath == null || soundPath.isEmpty) return false;
+
+    try {
+      final file = File(soundPath);
+      return await file.exists();
+    } catch (e) {
+      debugPrint('Error checking sound file: $e');
+      return false;
+    }
+  }
+
+  // Get valid sound path with fallback to default
+  Future<String?> getValidSoundPath(String? customPath) async {
+    // If custom path is provided and valid, use it
+    if (customPath != null && await isSoundFileValid(customPath)) {
+      return customPath;
+    }
+
+    // Otherwise fall back to default alarm
+    if (_defaultAlarmPath != null &&
+        await isSoundFileValid(_defaultAlarmPath)) {
+      debugPrint('⚠️ Using default alarm sound (custom sound not found)');
+      return _defaultAlarmPath;
+    }
+
+    // No valid sound found
+    debugPrint('❌ No valid alarm sound found');
+    return null;
   }
 
   Future<void> _onTimerComplete(
@@ -141,12 +169,14 @@ class TimerService {
       onShowWindow!();
     }
 
-    // Play alarm sound (use default if none provided)
-    final alarmToPlay = soundPath ?? _defaultAlarmPath;
-    if (alarmToPlay != null) {
-      await playAlarm(itemId, alarmToPlay, loopSound);
+    // Get valid sound path (with fallback to default)
+    final validSoundPath = await getValidSoundPath(soundPath);
+
+    // Play alarm sound if available
+    if (validSoundPath != null) {
+      await playAlarm(itemId, validSoundPath, loopSound);
     } else {
-      debugPrint('TimerService: No alarm sound available');
+      debugPrint('⚠️ No valid alarm sound available');
     }
 
     // Show notification
@@ -288,12 +318,22 @@ class TimerService {
     }
   }
 
-  Future<void> triggerTimerCompletion(String itemId, String itemTitle) async {
-    debugPrint(
-      '⏰ Triggering completion for timer that finished while PC was off: $itemTitle',
-    );
+  Future<void> triggerTimerCompletion(
+    String itemId,
+    String itemTitle, {
+    String? soundPath,
+    bool loopSound = false,
+  }) async {
+    debugPrint('⏰ Triggering completion for timer: $itemTitle');
+
+    // Show window
     if (onShowWindow != null) {
       onShowWindow!();
+    }
+
+    // Play alarm with validated path
+    if (soundPath != null) {
+      await playAlarm(itemId, soundPath, loopSound);
     }
 
     // Show notification
