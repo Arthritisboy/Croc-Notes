@@ -1,4 +1,3 @@
-// lib/shared/widgets/font_size_dialog.dart
 import 'package:flutter/material.dart';
 
 class FontSizeDialog extends StatefulWidget {

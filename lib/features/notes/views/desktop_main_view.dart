@@ -1,4 +1,3 @@
-// lib/features/notes/views/desktop_main_view.dart
 import 'package:flutter/material.dart';
 import 'package:modular_journal/features/notes/widgets/window_controls.dart';
 import 'package:provider/provider.dart';

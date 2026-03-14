@@ -1,4 +1,3 @@
-// lib/core/database/database_service.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';

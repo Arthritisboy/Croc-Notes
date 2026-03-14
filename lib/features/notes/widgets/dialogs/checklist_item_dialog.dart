@@ -1,4 +1,3 @@
-// lib/features/notes/widgets/dialogs/checklist_item_dialog.dart
 import 'package:flutter/material.dart';
 
 class ChecklistItemDialog extends StatefulWidget {

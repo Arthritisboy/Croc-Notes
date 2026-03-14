@@ -1,4 +1,3 @@
-// lib/data/services/timer_service.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -15,6 +14,8 @@ class TimerService {
   final Map<String, Timer> _activeTimers = {};
   final Map<String, AudioPlayer> _activeAlarms = {};
   final Map<String, String> _itemTitles = {};
+  final Map<String, String?> _itemSoundPaths = {};
+  final Map<String, bool> _itemLoopSettings = {};
   String? get defaultAlarmPath => _defaultAlarmPath;
 
   // Initialize as late but set in initialize()
@@ -97,25 +98,37 @@ class TimerService {
     required String itemId,
     required String itemTitle,
     required Duration duration,
-    String? soundPath,
+    String? soundPath, // null means use default
     bool loopSound = false,
     required Function() onComplete,
   }) {
     // Cancel existing timer for this item
     stopTimer(itemId);
 
-    // Store the item title
+    // Store all preferences
     _itemTitles[itemId] = itemTitle;
+    _itemSoundPaths[itemId] =
+        soundPath; // Store the actual choice (null = default)
+    _itemLoopSettings[itemId] = loopSound;
 
     final timer = Timer(duration, () async {
-      // Before completing, validate the sound path
-      final validPath = await getValidSoundPath(soundPath);
-      await _onTimerComplete(itemId, validPath, loopSound, onComplete);
+      // Get the stored sound path
+      final storedPath = _itemSoundPaths[itemId];
+
+      // Get valid sound path (null = use default)
+      final validPath = await getValidSoundPath(storedPath);
+
+      await _onTimerComplete(
+        itemId,
+        validPath,
+        _itemLoopSettings[itemId] ?? false,
+        onComplete,
+      );
     });
 
     _activeTimers[itemId] = timer;
     debugPrint(
-      'Timer started for item $itemId ($itemTitle), duration: $duration',
+      'Timer started for item $itemId ($itemTitle), duration: $duration, sound: ${soundPath ?? "default"}',
     );
   }
 
@@ -134,14 +147,17 @@ class TimerService {
   // Get valid sound path with fallback to default
   Future<String?> getValidSoundPath(String? customPath) async {
     // If custom path is provided and valid, use it
-    if (customPath != null && await isSoundFileValid(customPath)) {
+    if (customPath != null &&
+        customPath.isNotEmpty &&
+        await isSoundFileValid(customPath)) {
+      debugPrint('✅ Using custom sound: $customPath');
       return customPath;
     }
 
     // Otherwise fall back to default alarm
     if (_defaultAlarmPath != null &&
         await isSoundFileValid(_defaultAlarmPath)) {
-      debugPrint('⚠️ Using default alarm sound (custom sound not found)');
+      debugPrint('⚠️ Using default alarm sound (custom not available or null)');
       return _defaultAlarmPath;
     }
 

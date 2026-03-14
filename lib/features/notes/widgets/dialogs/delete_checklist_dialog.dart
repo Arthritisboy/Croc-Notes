@@ -1,4 +1,3 @@
-// lib/features/notes/widgets/dialogs/delete_checklist_item_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:modular_journal/features/notes/models/note.dart';
 

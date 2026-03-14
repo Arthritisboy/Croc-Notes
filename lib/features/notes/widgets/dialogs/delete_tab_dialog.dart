@@ -1,4 +1,3 @@
-// lib/features/notes/widgets/dialogs/delete_tab_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:modular_journal/features/notes/models/tab.dart';
 

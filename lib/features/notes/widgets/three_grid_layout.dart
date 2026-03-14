@@ -1,4 +1,3 @@
-// lib/features/notes/widgets/three_grid_layout.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../viewmodels/notes_viewmodel.dart';

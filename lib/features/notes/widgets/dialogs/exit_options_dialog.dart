@@ -1,4 +1,3 @@
-// lib/shared/widgets/exit_options_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:modular_journal/data/services/timer_service.dart';
 import 'package:window_manager/window_manager.dart';

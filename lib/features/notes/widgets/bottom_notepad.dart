@@ -1,4 +1,3 @@
-// lib/features/notes/widgets/bottom_notepad.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

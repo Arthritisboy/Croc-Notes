@@ -1,4 +1,3 @@
-// lib/features/notes/widgets/dialogs/edit_timer_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:modular_journal/features/notes/models/note.dart';
 import 'timer_setup_dialog.dart';

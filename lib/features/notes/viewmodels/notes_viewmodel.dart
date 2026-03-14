@@ -163,21 +163,14 @@ class NotesViewModel extends ChangeNotifier {
                 itemId: item.id,
                 itemTitle: item.title,
                 duration: remaining,
-                soundPath: item.alarmSoundPath,
+                soundPath:
+                    item.alarmSoundPath, // This will be null for default sound
                 loopSound: item.isLoopingAlarm,
                 onComplete: () {
                   debugPrint('Timer completed: ${item.title}');
-
-                  // Update the item state
                   item.completeTimer();
-
-                  // Set checkbox state to unchecked when completed
                   item.checkboxState = CheckboxState.unchecked;
-
-                  // Update in database
                   updateNote(item);
-
-                  // Force UI refresh
                   notifyListeners();
                 },
               );
@@ -904,6 +897,13 @@ class NotesViewModel extends ChangeNotifier {
             'tabId': tabId,
             'title': title,
             'checkboxState': 0,
+            'timerState': 0,
+            'timerDuration': null,
+            'alarmSoundPath': null, // No sound for regular items
+            'isLoopingAlarm': 0,
+            'timerEndTime': null,
+            'timerStartTime': null,
+            'elapsedTime': null,
             'sortOrder': tab.checklistItems.length - 1,
           });
 
@@ -985,8 +985,12 @@ class NotesViewModel extends ChangeNotifier {
             'checkboxState': timerItem.checkboxState.index,
             'timerState': timerItem.timerState.index,
             'timerDuration': timerItem.timerDuration?.inMilliseconds,
-            'alarmSoundPath': timerItem.alarmSoundPath,
+            'alarmSoundPath':
+                timerItem.alarmSoundPath, // This can be null for default
             'isLoopingAlarm': timerItem.isLoopingAlarm ? 1 : 0,
+            'timerEndTime': timerItem.timerEndTime?.toIso8601String(),
+            'timerStartTime': timerItem.timerStartTime?.toIso8601String(),
+            'elapsedTime': timerItem.elapsedTime?.inMilliseconds,
             'sortOrder': tab.checklistItems.length - 1,
           });
 
@@ -1009,7 +1013,12 @@ class NotesViewModel extends ChangeNotifier {
           await db.update(
             'checklist_items',
             {
+              'title': updatedNote.title,
+              'checkboxState': updatedNote.checkboxState.index,
               'timerState': updatedNote.timerState.index,
+              'timerDuration': updatedNote.timerDuration?.inMilliseconds,
+              'alarmSoundPath': updatedNote.alarmSoundPath, // This can be null
+              'isLoopingAlarm': updatedNote.isLoopingAlarm ? 1 : 0,
               'timerEndTime': updatedNote.timerEndTime?.toIso8601String(),
               'timerStartTime': updatedNote.timerStartTime?.toIso8601String(),
               'elapsedTime': updatedNote.elapsedTime?.inMilliseconds,

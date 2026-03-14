@@ -1,4 +1,3 @@
-// lib/shared/widgets/window_controls.dart
 import 'package:flutter/material.dart';
 import 'package:modular_journal/core/navigation.dart';
 import 'package:modular_journal/features/notes/views/settings_view.dart';

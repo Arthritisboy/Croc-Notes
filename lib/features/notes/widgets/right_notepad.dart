@@ -1,4 +1,3 @@
-// lib/features/notes/widgets/right_notepad.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';

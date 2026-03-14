@@ -1,4 +1,3 @@
-// lib/features/notes/models/note.dart
 enum CheckboxState { unchecked, checked, crossed }
 
 enum TimerState { idle, running, paused, completed }
