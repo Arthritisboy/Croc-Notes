@@ -15,28 +15,27 @@ class DatabaseService {
   // Get the app data directory (where the executable is)
   Future<String> getAppDataDirectory() async {
     if (Platform.isWindows) {
-      // For Windows, use the directory where the executable is located
+      // Windows: Portable - next to executable
       final executablePath = Platform.resolvedExecutable;
       final appDir = path.dirname(executablePath);
-
-      // Create a 'data' subfolder to keep things organized
       final dataDir = path.join(appDir, 'data');
       final dataDirectory = Directory(dataDir);
 
       if (!await dataDirectory.exists()) {
         await dataDirectory.create(recursive: true);
-        debugPrint('Created data directory: $dataDir');
+        debugPrint('📁 [Windows] Created data directory: $dataDir');
       }
 
       return dataDir;
     } else {
-      // For other platforms, fallback to app documents directory
+      // Android: App-specific storage (no permissions needed)
       final documentsDir = await getApplicationDocumentsDirectory();
       final appDir = path.join(documentsDir.path, 'CrocNotes');
       final appDirectory = Directory(appDir);
 
       if (!await appDirectory.exists()) {
         await appDirectory.create(recursive: true);
+        debugPrint('📁 [Android] Created app directory: $appDir');
       }
 
       return appDir;
@@ -51,14 +50,14 @@ class DatabaseService {
 
   Future<Database> _initDatabase() async {
     final appDir = await getAppDataDirectory();
-    final dbPath = path.join(appDir, 'croc_notes.db'); // Changed filename
+    final dbPath = path.join(appDir, 'croc_notes.db');
 
     if (Platform.isWindows) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
 
-    debugPrint('Database path: $dbPath');
+    debugPrint('📁 Database path: $dbPath');
 
     return await openDatabase(
       dbPath,
@@ -301,10 +300,10 @@ class DatabaseService {
 
   // Updated to use app directory
   Future<String> getImagesDirectory() async {
-    final dir = getImagesDirectorySync();
-    // Ensure it exists asynchronously
-    await Directory(dir).create(recursive: true);
-    return dir;
+    final dir = await getAppDataDirectory();
+    final imagesDir = path.join(dir, 'images');
+    await Directory(imagesDir).create(recursive: true);
+    return imagesDir;
   }
 
   static String getImagesDirectorySync() {
@@ -313,8 +312,17 @@ class DatabaseService {
       final appDir = path.dirname(executablePath);
       return path.join(appDir, 'data', 'images');
     } else {
-      // For other platforms, fallback
-      return path.join(Directory.current.path, 'data', 'images');
+      // Android: Can't use sync - will be set in main
+      return '';
+    }
+  }
+
+  static Future<String> getImagesDirectoryAsync() async {
+    if (Platform.isWindows) {
+      return getImagesDirectorySync();
+    } else {
+      final documentsDir = await getApplicationDocumentsDirectory();
+      return path.join(documentsDir.path, 'CrocNotes', 'images');
     }
   }
 }

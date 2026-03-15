@@ -40,14 +40,17 @@ class ImageStorageService {
   }
 
   // Get the images directory (inside the app data folder)
+  // Get platform-specific images directory
   Future<String> getImagesDirectory() async {
     final appDir = await getAppDataDirectory();
     final imagesDir = Directory(path.join(appDir, 'images'));
 
-    debugPrint('🔍 ImageStorageService: Images directory: ${imagesDir.path}');
+    debugPrint(
+      '🔍 [${Platform.operatingSystem}] Images directory: ${imagesDir.path}',
+    );
 
     if (!await imagesDir.exists()) {
-      debugPrint('📁 ImageStorageService: Creating images directory');
+      debugPrint('📁 Creating images directory');
       await imagesDir.create(recursive: true);
     }
 
@@ -147,5 +150,16 @@ class ImageStorageService {
     await sourceImage.copy(destinationPath);
 
     return fileName;
+  }
+
+  static String getImagesDirectorySync() {
+    if (Platform.isWindows) {
+      final executablePath = Platform.resolvedExecutable;
+      final appDir = path.dirname(executablePath);
+      return path.join(appDir, 'data', 'images');
+    } else {
+      // Android: Can't do sync easily, will be set async in main
+      return ''; // Will be set after async call
+    }
   }
 }

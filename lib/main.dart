@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:modular_journal/core/database/database_service.dart';
-import 'package:modular_journal/core/navigation.dart'; // Add this import
+import 'package:modular_journal/core/navigation.dart';
 import 'package:modular_journal/data/services/timer_service.dart';
 import 'package:modular_journal/features/notes/models/note.dart';
+import 'package:modular_journal/features/notes/views/mobile_main_view.dart';
+import 'package:modular_journal/features/notes/views/mobile_settings_view.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/exit_options_dialog.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:window_manager/window_manager.dart';
@@ -16,138 +18,141 @@ import 'features/notes/viewmodels/notes_viewmodel.dart';
 import 'features/notes/views/desktop_main_view.dart';
 import 'features/notes/widgets/dialogs/timer_complete_dialog.dart';
 
-// Global instance of timer service for use throughout the app
+// Global instances
 final timerService = TimerService();
 late String cachedImagesDirectory;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  cachedImagesDirectory = await DatabaseService().getImagesDirectory();
-
   debugPrint('\n=== CROC NOTES START ===');
   debugPrint('Current working directory: ${Directory.current.path}');
   debugPrint('Platform: ${Platform.operatingSystem}');
 
-  // Initialize window manager
-  debugPrint('\n1. Initializing window manager...');
-  await windowManager.ensureInitialized();
-  await windowManager.setPreventClose(true);
-  debugPrint('   ✓ Window manager initialized');
-
+  // ✅ Platform-specific initialization
   if (Platform.isWindows) {
+    // Initialize desktop-only plugins
+    debugPrint('\n1. Initializing window manager...');
+    await windowManager.ensureInitialized();
+    await windowManager.setPreventClose(true);
+    debugPrint('   ✓ Window manager initialized');
+
     debugPrint('   Setting up sqflite FFI...');
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
     debugPrint('   ✓ sqflite FFI initialized');
   }
 
-  // Initialize timer service
+  // Initialize timer service (works on all platforms)
   debugPrint('\n2. Initializing timer service...');
   await timerService.initialize();
 
-  cachedImagesDirectory = DatabaseService.getImagesDirectorySync();
-  debugPrint('📁 Cached images directory: $cachedImagesDirectory');
+  // Platform-specific image directory caching
+  if (Platform.isWindows) {
+    cachedImagesDirectory = DatabaseService.getImagesDirectorySync();
+    debugPrint('📁 [Windows] Cached images directory: $cachedImagesDirectory');
+    await Directory(cachedImagesDirectory).create(recursive: true);
+  } else {
+    // Android: Use async method
+    cachedImagesDirectory = await DatabaseService.getImagesDirectoryAsync();
+    debugPrint('📁 [Android] Cached images directory: $cachedImagesDirectory');
+  }
 
-  Directory(cachedImagesDirectory).create(recursive: true);
-
-  // Set the callback to show window when timer completes
-  timerService.onShowWindow = () async {
-    debugPrint('⏰ TimerService: Showing window from callback');
-
-    try {
-      if (await windowManager.isMinimized()) {
-        await windowManager.restore();
-        debugPrint('   Window restored from minimized');
+  // ✅ Desktop-only callbacks and setup
+  if (Platform.isWindows) {
+    // Set the callback to show window when timer completes
+    timerService.onShowWindow = () async {
+      debugPrint('⏰ TimerService: Showing window from callback');
+      try {
+        if (await windowManager.isMinimized()) {
+          await windowManager.restore();
+          debugPrint('   Window restored from minimized');
+        }
+        if (!await windowManager.isVisible()) {
+          await windowManager.show();
+          debugPrint('   Window shown');
+        }
+        await windowManager.focus();
+        debugPrint('   Window focused');
+      } catch (e) {
+        debugPrint('❌ Error showing window: $e');
       }
+    };
 
-      if (!await windowManager.isVisible()) {
-        await windowManager.show();
-        debugPrint('   Window shown');
-      }
-
-      await windowManager.focus();
-      debugPrint('   Window focused');
-    } catch (e) {
-      debugPrint('❌ Error showing window: $e');
-    }
-  };
-
-  // Set the callback for timer completion
-  timerService.onTimerComplete = (String itemId, String itemTitle) {
-    debugPrint('⏰ TimerService: Timer completed for $itemTitle');
-
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (navigatorKey.currentContext != null) {
-        navigatorKey.currentState?.push(
-          DialogRoute(
-            context: navigatorKey.currentContext!,
-            builder: (context) => TimerCompleteDialog(
-              itemId: itemId,
-              itemTitle: itemTitle,
-              onStopAlarm: () {
-                debugPrint('Stopping alarm for item $itemId');
-                timerService.stopAlarm(itemId);
-              },
-              onDismiss: () {
-                debugPrint('Timer dialog dismissed for $itemTitle');
-                // Find the ViewModel and update the note
-                try {
-                  final viewModel = Provider.of<NotesViewModel>(
-                    navigatorKey.currentContext!,
-                    listen: false,
-                  );
-                  viewModel.resetTimerItem(itemId);
-
-                  // Also ensure checkbox is set to unchecked
-                  viewModel.updateTimerItemCheckbox(
-                    itemId,
-                    CheckboxState.unchecked,
-                  );
-                } catch (e) {
-                  debugPrint('Error updating note: $e');
-                }
-              },
+    // Set the callback for timer completion
+    timerService.onTimerComplete = (String itemId, String itemTitle) {
+      debugPrint('⏰ TimerService: Timer completed for $itemTitle');
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (navigatorKey.currentContext != null) {
+          navigatorKey.currentState?.push(
+            DialogRoute(
+              context: navigatorKey.currentContext!,
+              builder: (context) => TimerCompleteDialog(
+                itemId: itemId,
+                itemTitle: itemTitle,
+                onStopAlarm: () {
+                  debugPrint('Stopping alarm for item $itemId');
+                  timerService.stopAlarm(itemId);
+                },
+                onDismiss: () {
+                  debugPrint('Timer dialog dismissed for $itemTitle');
+                  try {
+                    final viewModel = Provider.of<NotesViewModel>(
+                      navigatorKey.currentContext!,
+                      listen: false,
+                    );
+                    viewModel.resetTimerItem(itemId);
+                    viewModel.updateTimerItemCheckbox(
+                      itemId,
+                      CheckboxState.unchecked,
+                    );
+                  } catch (e) {
+                    debugPrint('Error updating note: $e');
+                  }
+                },
+              ),
             ),
-          ),
-        );
-      } else {
-        debugPrint('❌ navigatorKey.currentContext is null');
-      }
+          );
+        } else {
+          debugPrint('❌ navigatorKey.currentContext is null');
+        }
+      });
+    };
+
+    debugPrint('   ✓ Timer service initialized with window callback');
+
+    // Set up tray menu (Windows only)
+    await _setupTrayMenu();
+
+    // Set window options (Windows only)
+    WindowOptions windowOptions = const WindowOptions(
+      size: Size(1200, 800),
+      minimumSize: Size(800, 600),
+      center: true,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.hidden,
+    );
+
+    debugPrint('\n3. Setting up window...');
+    await windowManager.waitUntilReadyToShow(windowOptions, () async {
+      windowManager.addListener(_WindowListener());
+      await windowManager.show();
+      await windowManager.focus();
+      await Window.setEffect(effect: WindowEffect.acrylic, dark: false);
+      debugPrint('   ✓ Window shown and focused');
     });
-  };
-
-  debugPrint('   ✓ Timer service initialized with window callback');
-
-  // Set up tray with extensive debugging (BEFORE window)
-  await _setupTrayMenu();
-
-  // Set window options
-  WindowOptions windowOptions = const WindowOptions(
-    size: Size(1200, 800),
-    minimumSize: Size(800, 600),
-    center: true,
-    backgroundColor: Colors.transparent,
-    skipTaskbar: false,
-    titleBarStyle: TitleBarStyle.hidden,
-  );
-
-  debugPrint('\n3. Setting up window...');
-  await windowManager.waitUntilReadyToShow(windowOptions, () async {
-    windowManager.addListener(_WindowListener());
-    await windowManager.show();
-    await windowManager.focus();
-    await Window.setEffect(effect: WindowEffect.acrylic, dark: false);
-    debugPrint('   ✓ Window shown and focused');
-  });
+  }
 
   debugPrint('\n4. Starting Flutter app...');
   runApp(const MyApp());
 }
 
+// ✅ Make these functions conditional or only used on Windows
 Future<void> _setupTrayMenu() async {
-  debugPrint('\n=== TRAY INITIALIZATION DEBUG ===');
+  if (!Platform.isWindows) return; // Guard clause
 
+  debugPrint('\n=== TRAY INITIALIZATION DEBUG ===');
   try {
     final menu = Menu(
       items: [
@@ -194,11 +199,13 @@ Future<void> _setupTrayMenu() async {
   }
 }
 
+// ✅ Add platform checks to listeners
 class _WindowListener implements WindowListener {
   @override
   void onWindowClose() async {
+    if (!Platform.isWindows) return;
     debugPrint('Window close event intercepted - showing exit options');
-    await windowManager.hide(); // Hide for now
+    await windowManager.hide();
   }
 
   @override
@@ -237,6 +244,7 @@ class _WindowListener implements WindowListener {
 class _TrayListener implements TrayListener {
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
+    if (!Platform.isWindows) return;
     debugPrint('Tray menu clicked: ${menuItem.key}');
     switch (menuItem.key) {
       case 'show':
@@ -256,6 +264,7 @@ class _TrayListener implements TrayListener {
 
   @override
   void onTrayIconMouseDown() {
+    if (!Platform.isWindows) return;
     debugPrint('Tray icon clicked - showing window');
     _showWindow();
   }
@@ -265,8 +274,8 @@ class _TrayListener implements TrayListener {
 
   @override
   void onTrayIconRightMouseDown() {
+    if (!Platform.isWindows) return;
     debugPrint('Tray icon right mouse down - showing context menu');
-    // Small delay to ensure the menu appears
     Future.delayed(const Duration(milliseconds: 10), () {
       trayManager.popUpContextMenu();
     });
@@ -276,6 +285,7 @@ class _TrayListener implements TrayListener {
   void onTrayIconRightMouseUp() => debugPrint('Tray icon right mouse up');
 
   void _showWindow() async {
+    if (!Platform.isWindows) return;
     if (await windowManager.isMinimized()) {
       await windowManager.restore();
     }
@@ -284,8 +294,8 @@ class _TrayListener implements TrayListener {
   }
 
   void _showAboutDialog() {
+    if (!Platform.isWindows) return;
     _showWindow();
-    // Show about dialog using navigatorKey
     navigatorKey.currentState?.push(
       DialogRoute(
         context: navigatorKey.currentContext!,
@@ -306,8 +316,8 @@ class _TrayListener implements TrayListener {
   }
 
   void _showExitDialog() {
+    if (!Platform.isWindows) return;
     _showWindow();
-    // Show exit options dialog using navigatorKey
     navigatorKey.currentState?.push(
       DialogRoute(
         context: navigatorKey.currentContext!,
@@ -329,7 +339,7 @@ class MyApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'Croc Notes',
-        navigatorKey: navigatorKey, // Add navigator key
+        navigatorKey: navigatorKey,
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
@@ -352,7 +362,19 @@ class MyApp extends StatelessWidget {
           useMaterial3: true,
         ),
         themeMode: ThemeMode.system,
-        home: const DesktopMainView(),
+        // Platform-aware home
+        home: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth > 600) {
+              // Tablet or desktop
+              return const DesktopMainView();
+            } else {
+              // Phone
+              return const MobileMainView();
+            }
+          },
+        ),
+        routes: {'/settings': (context) => const MobileSettingsView()},
         debugShowCheckedModeBanner: false,
       ),
     );
