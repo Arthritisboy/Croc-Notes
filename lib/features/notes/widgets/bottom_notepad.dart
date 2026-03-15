@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
+import 'package:modular_journal/core/database/database_service.dart';
 import 'package:modular_journal/data/services/image_storage_service.dart';
 import 'package:modular_journal/features/notes/widgets/collapsible_toolbar.dart';
 import 'package:path/path.dart' as path;
@@ -16,6 +17,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:super_clipboard/super_clipboard.dart';
 import '../models/tab.dart';
 import '../viewmodels/notes_viewmodel.dart';
+import 'package:modular_journal/main.dart'
+    show cachedImagesDirectory; // Import if using global
 
 class BottomNotepad extends StatefulWidget {
   final ContentTab tab;
@@ -38,6 +41,11 @@ class _BottomNotepadState extends State<BottomNotepad> {
   final ImagePicker _imagePicker = ImagePicker();
   late String _currentTabId;
   final ImageStorageService _imageStorage = ImageStorageService();
+  final DatabaseService _db = DatabaseService();
+  final Map<String, FileImage> _imageProviderCache = {};
+
+  // Cache the images directory for synchronous access
+  String? _cachedImagesDir;
 
   // Debounce variables
   DateTime _lastPasteTime = DateTime.fromMillisecondsSinceEpoch(0);
@@ -50,6 +58,45 @@ class _BottomNotepadState extends State<BottomNotepad> {
     _currentTabId = widget.tab.id;
     _initializeController();
     _focusNode.addListener(_onFocusChange);
+  }
+
+  // Synchronous image provider - NO FUTURES, NO WAITING!
+  ImageProvider? _createImageProvider(String imageIdentifier) {
+    // Check cache first
+    if (_imageProviderCache.containsKey(imageIdentifier)) {
+      return _imageProviderCache[imageIdentifier];
+    }
+
+    // If it's already a full path, use FileImage directly
+    if (imageIdentifier.startsWith(RegExp(r'^[A-Z]:|^/'))) {
+      final file = File(imageIdentifier);
+      if (file.existsSync()) {
+        final provider = FileImage(file);
+        _imageProviderCache[imageIdentifier] = provider;
+        return provider;
+      }
+      return null;
+    }
+
+    // If it's a data URI, let Quill handle it
+    if (imageIdentifier.startsWith('data:image')) {
+      return null;
+    }
+
+    // Use the GLOBAL cached path - SYNCHRONOUS, AVAILABLE IMMEDIATELY!
+    final fullPath = path.join(cachedImagesDirectory, imageIdentifier);
+    final file = File(fullPath);
+
+    if (file.existsSync()) {
+      final provider = FileImage(file);
+      _imageProviderCache[imageIdentifier] = provider;
+      debugPrint('🖼️ Cached: $imageIdentifier');
+      return provider;
+    } else {
+      debugPrint('❌ Image not found: $fullPath');
+    }
+
+    return null;
   }
 
   void _onFocusChange() {
@@ -165,12 +212,12 @@ class _BottomNotepadState extends State<BottomNotepad> {
 
             debugPrint('✅ Image saved directly to: $imagePath');
 
-            // Insert the file path into Quill
+            // Insert the FILENAME ONLY into Quill
             final index = _controller.selection.baseOffset;
             if (index >= 0) {
               _controller.document.insert(
                 index,
-                BlockEmbed.image(imagePath), // Use the actual file path
+                BlockEmbed.image(fileName), // Store just the filename!
               );
 
               // Save the filename to database
@@ -283,6 +330,9 @@ class _BottomNotepadState extends State<BottomNotepad> {
       _currentTabId = widget.tab.id;
       _controller.dispose();
       HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+
+      _imageProviderCache.clear();
+
       _initializeController();
     }
   }
@@ -295,52 +345,9 @@ class _BottomNotepadState extends State<BottomNotepad> {
     _focusNode.dispose();
     _controller.dispose();
     _scrollController.dispose();
+    _imageProviderCache.clear();
+
     super.dispose();
-  }
-
-  Future<void> _insertImage() async {
-    debugPrint('🖼️ BottomNotepad: Starting image insertion');
-
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1024,
-        imageQuality: 85,
-      );
-
-      if (pickedFile != null) {
-        debugPrint('✅ Image picked: ${pickedFile.path}');
-
-        final bytes = await File(pickedFile.path).readAsBytes();
-        final base64Image = base64Encode(bytes);
-
-        final tempFile = File(pickedFile.path);
-        final fileName = await _imageStorage.saveImage(tempFile);
-        debugPrint('✅ Image saved with filename: $fileName');
-
-        final index = _controller.selection.baseOffset;
-
-        if (index >= 0) {
-          _controller.document.insert(
-            index,
-            BlockEmbed.image('data:image/jpeg;base64,$base64Image'),
-          );
-
-          final viewModel = Provider.of<NotesViewModel>(context, listen: false);
-          await viewModel.addImage(widget.tab.id, fileName);
-          debugPrint('✅ Filename saved to database: $fileName');
-        }
-      } else {
-        debugPrint('❌ No image picked');
-      }
-    } catch (e) {
-      debugPrint('❌ Error inserting image: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error inserting image: $e')));
-      }
-    }
   }
 
   @override
@@ -407,77 +414,57 @@ class _BottomNotepadState extends State<BottomNotepad> {
                 showSuperscript: false,
                 showLineHeightButton: false,
 
+                // Use onImageInsertCallback to insert filename only
                 embedButtons: FlutterQuillEmbeds.toolbarButtons(
                   imageButtonOptions: QuillToolbarImageButtonOptions(
                     imageButtonConfig: QuillToolbarImageConfig(
-                      // Let Quill insert first, then update the path
-                      onImageInsertedCallback: (String imagePath) async {
-                        debugPrint('📸 Image insertion completed: $imagePath');
-
-                        try {
-                          final file = File(imagePath);
-                          if (!await file.exists()) {
+                      onImageInsertCallback:
+                          (String imagePath, QuillController controller) async {
                             debugPrint(
-                              '❌ Image file does not exist: $imagePath',
+                              '🖼️ Image insertion requested: $imagePath',
                             );
-                            return;
-                          }
 
-                          // Save using your ImageStorageService
-                          final fileName = await _imageStorage.saveImage(file);
-                          final savedImagePath = path.join(
-                            await _imageStorage.getImagesDirectory(),
-                            fileName,
-                          );
-                          debugPrint('✅ Image saved with filename: $fileName');
-                          debugPrint('📁 Saved to path: $savedImagePath');
-
-                          // Save to database
-                          final viewModel = Provider.of<NotesViewModel>(
-                            context,
-                            listen: false,
-                          );
-                          await viewModel.addImage(widget.tab.id, fileName);
-
-                          // Get the current cursor position
-                          final cursorPos = _controller.selection.baseOffset;
-
-                          // The image should be right before the cursor
-                          // Let's find and replace the last image operation
-                          final delta = _controller.document.toDelta();
-
-                          for (int i = delta.length - 1; i >= 0; i--) {
-                            final op = delta.elementAt(i);
-                            if (op.data is Map &&
-                                (op.data as Map).containsKey('image')) {
-                              // Found the last image, replace it by deleting and inserting
-                              // But we need to be careful about the position
-
-                              // Get the length of the document before this operation
-                              int pos = 0;
-                              for (int j = 0; j < i; j++) {
-                                final opData = delta.elementAt(j).data;
-                                if (opData is String) {
-                                  pos += opData.length;
-                                } else {
-                                  pos += 1; // embeds count as 1
-                                }
+                            try {
+                              final file = File(imagePath);
+                              if (!await file.exists()) {
+                                debugPrint(
+                                  '❌ Image file does not exist: $imagePath',
+                                );
+                                return;
                               }
 
-                              // Replace the image
-                              _controller.document.delete(pos, 1);
-                              _controller.document.insert(
-                                pos,
-                                BlockEmbed.image(savedImagePath),
+                              // Save using your ImageStorageService - returns just the filename
+                              final fileName = await _imageStorage.saveImage(
+                                file,
                               );
-                              debugPrint('✅ Replaced image with saved version');
-                              break;
+                              debugPrint(
+                                '✅ Image saved with filename: $fileName',
+                              );
+
+                              // Save to database (filename only)
+                              final viewModel = Provider.of<NotesViewModel>(
+                                context,
+                                listen: false,
+                              );
+                              await viewModel.addImage(widget.tab.id, fileName);
+
+                              // Insert the image with the FILENAME ONLY
+                              final index = controller.selection.baseOffset;
+                              if (index >= 0) {
+                                controller.document.insert(
+                                  index,
+                                  BlockEmbed.image(
+                                    fileName,
+                                  ), // Store just the filename!
+                                );
+                                debugPrint(
+                                  '✅ Inserted image with filename only',
+                                );
+                              }
+                            } catch (e) {
+                              debugPrint('❌ Error saving image: $e');
                             }
-                          }
-                        } catch (e) {
-                          debugPrint('❌ Error saving image: $e');
-                        }
-                      },
+                          },
                     ),
                   ),
                 ),
@@ -529,7 +516,6 @@ class _BottomNotepadState extends State<BottomNotepad> {
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: RepaintBoundary(
-                // Keep this optimization
                 child: QuillEditor(
                   controller: _controller,
                   focusNode: _focusNode,
@@ -543,9 +529,23 @@ class _BottomNotepadState extends State<BottomNotepad> {
                     scrollable: true,
                     scrollBottomInset: 0.0,
                     embedBuilders: [
+                      // Use the default image embed builder
+                      // We'll customize it via imageProviderBuilder instead of custom builder
                       ...kIsWeb
-                          ? FlutterQuillEmbeds.editorWebBuilders()
-                          : FlutterQuillEmbeds.editorBuilders(),
+                          ? FlutterQuillEmbeds.editorWebBuilders(
+                              imageEmbedConfig: QuillEditorImageEmbedConfig(
+                                imageProviderBuilder: (context, imageUrl) {
+                                  return _createImageProvider(imageUrl);
+                                },
+                              ),
+                            )
+                          : FlutterQuillEmbeds.editorBuilders(
+                              imageEmbedConfig: QuillEditorImageEmbedConfig(
+                                imageProviderBuilder: (context, imageUrl) {
+                                  return _createImageProvider(imageUrl);
+                                },
+                              ),
+                            ),
                     ],
                   ),
                 ),

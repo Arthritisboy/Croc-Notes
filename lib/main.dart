@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:modular_journal/core/database/database_service.dart';
 import 'package:modular_journal/core/navigation.dart'; // Add this import
 import 'package:modular_journal/data/services/timer_service.dart';
 import 'package:modular_journal/features/notes/models/note.dart';
@@ -13,13 +14,16 @@ import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:provider/provider.dart';
 import 'features/notes/viewmodels/notes_viewmodel.dart';
 import 'features/notes/views/desktop_main_view.dart';
-import 'features/notes/widgets/dialogs/timer_complete_dialog.dart'; // Add this import
+import 'features/notes/widgets/dialogs/timer_complete_dialog.dart';
 
 // Global instance of timer service for use throughout the app
 final timerService = TimerService();
+late String cachedImagesDirectory;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  cachedImagesDirectory = await DatabaseService().getImagesDirectory();
 
   debugPrint('\n=== CROC NOTES START ===');
   debugPrint('Current working directory: ${Directory.current.path}');
@@ -41,6 +45,11 @@ void main() async {
   // Initialize timer service
   debugPrint('\n2. Initializing timer service...');
   await timerService.initialize();
+
+  cachedImagesDirectory = DatabaseService.getImagesDirectorySync();
+  debugPrint('📁 Cached images directory: $cachedImagesDirectory');
+
+  Directory(cachedImagesDirectory).create(recursive: true);
 
   // Set the callback to show window when timer completes
   timerService.onShowWindow = () async {

@@ -301,14 +301,20 @@ class DatabaseService {
 
   // Updated to use app directory
   Future<String> getImagesDirectory() async {
-    final appDir = await getAppDataDirectory();
-    final imagesDir = Directory(path.join(appDir, 'images'));
+    final dir = getImagesDirectorySync();
+    // Ensure it exists asynchronously
+    await Directory(dir).create(recursive: true);
+    return dir;
+  }
 
-    if (!await imagesDir.exists()) {
-      await imagesDir.create(recursive: true);
-      debugPrint('Created images directory: ${imagesDir.path}');
+  static String getImagesDirectorySync() {
+    if (Platform.isWindows) {
+      final executablePath = Platform.resolvedExecutable;
+      final appDir = path.dirname(executablePath);
+      return path.join(appDir, 'data', 'images');
+    } else {
+      // For other platforms, fallback
+      return path.join(Directory.current.path, 'data', 'images');
     }
-
-    return imagesDir.path;
   }
 }
