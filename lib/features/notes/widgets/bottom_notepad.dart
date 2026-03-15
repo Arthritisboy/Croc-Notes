@@ -407,11 +407,10 @@ class _BottomNotepadState extends State<BottomNotepad> {
                 showSuperscript: false,
                 showLineHeightButton: false,
 
-                // FIXED: No double insertion!
                 embedButtons: FlutterQuillEmbeds.toolbarButtons(
                   imageButtonOptions: QuillToolbarImageButtonOptions(
                     imageButtonConfig: QuillToolbarImageConfig(
-                      // Let Quill insert first
+                      // Let Quill insert first, then update the path
                       onImageInsertedCallback: (String imagePath) async {
                         debugPrint('📸 Image insertion completed: $imagePath');
 
@@ -426,7 +425,12 @@ class _BottomNotepadState extends State<BottomNotepad> {
 
                           // Save using your ImageStorageService
                           final fileName = await _imageStorage.saveImage(file);
+                          final savedImagePath = path.join(
+                            await _imageStorage.getImagesDirectory(),
+                            fileName,
+                          );
                           debugPrint('✅ Image saved with filename: $fileName');
+                          debugPrint('📁 Saved to path: $savedImagePath');
 
                           // Save to database
                           final viewModel = Provider.of<NotesViewModel>(
@@ -434,11 +438,46 @@ class _BottomNotepadState extends State<BottomNotepad> {
                             listen: false,
                           );
                           await viewModel.addImage(widget.tab.id, fileName);
+
+                          // Get the current cursor position
+                          final cursorPos = _controller.selection.baseOffset;
+
+                          // The image should be right before the cursor
+                          // Let's find and replace the last image operation
+                          final delta = _controller.document.toDelta();
+
+                          for (int i = delta.length - 1; i >= 0; i--) {
+                            final op = delta.elementAt(i);
+                            if (op.data is Map &&
+                                (op.data as Map).containsKey('image')) {
+                              // Found the last image, replace it by deleting and inserting
+                              // But we need to be careful about the position
+
+                              // Get the length of the document before this operation
+                              int pos = 0;
+                              for (int j = 0; j < i; j++) {
+                                final opData = delta.elementAt(j).data;
+                                if (opData is String) {
+                                  pos += opData.length;
+                                } else {
+                                  pos += 1; // embeds count as 1
+                                }
+                              }
+
+                              // Replace the image
+                              _controller.document.delete(pos, 1);
+                              _controller.document.insert(
+                                pos,
+                                BlockEmbed.image(savedImagePath),
+                              );
+                              debugPrint('✅ Replaced image with saved version');
+                              break;
+                            }
+                          }
                         } catch (e) {
                           debugPrint('❌ Error saving image: $e');
                         }
                       },
-                      // No need for onImageInsertCallback
                     ),
                   ),
                 ),

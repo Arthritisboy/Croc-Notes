@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.yourname" "\0"
-            VALUE "FileDescription", "modular_journal" "\0"
+            VALUE "CompanyName", "Arthritisboy" "\0"
+            VALUE "FileDescription", "Croc Notes" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "modular_journal" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.yourname. All rights reserved." "\0"
-            VALUE "OriginalFilename", "modular_journal.exe" "\0"
-            VALUE "ProductName", "modular_journal" "\0"
+            VALUE "InternalName", "Croc Notes" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026" "\0"
+            VALUE "OriginalFilename", "croc_notes.exe" "\0"
+            VALUE "ProductName", "Croc Notes" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

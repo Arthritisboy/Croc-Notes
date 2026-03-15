@@ -1,4 +1,4 @@
-package com.forfun.modular_journal
+package com.arthritisboy.croc_notes
 
 import io.flutter.embedding.android.FlutterActivity
 
