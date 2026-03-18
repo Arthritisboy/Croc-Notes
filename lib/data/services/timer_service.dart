@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:modular_journal/data/services/mobile/audio_helper.dart';
 import 'package:modular_journal/features/notes/models/note.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -16,6 +17,8 @@ class TimerService {
   final Map<String, String> _itemTitles = {};
   final Map<String, String?> _itemSoundPaths = {};
   final Map<String, bool> _itemLoopSettings = {};
+  final AudioHelper _audioHelper = AudioHelper();
+
   String? get defaultAlarmPath => _defaultAlarmPath;
 
   // Initialize as late but set in initialize()
@@ -24,6 +27,10 @@ class TimerService {
 
   // Default alarm sound path
   String? _defaultAlarmPath;
+
+  // Platform detection
+  final bool _isAndroid = Platform.isAndroid;
+  final bool _isWindows = Platform.isWindows;
 
   // Callbacks
   Function(String itemId, String itemTitle)? onTimerComplete;
@@ -47,14 +54,19 @@ class TimerService {
     await _notifications.initialize(initSettings);
     debugPrint('TimerService: Notifications initialized');
 
-    // Find default alarm sound
-    await _findDefaultAlarm();
+    // Platform-specific default alarm loading
+    if (_isAndroid) {
+      await _loadDefaultAlarmMobile();
+    } else if (_isWindows) {
+      await _findDefaultAlarmWindows();
+    }
 
     _isInitialized = true;
     debugPrint('TimerService: Initialization complete');
   }
 
-  Future<void> _findDefaultAlarm() async {
+  // Windows-specific default alarm finder
+  Future<void> _findDefaultAlarmWindows() async {
     try {
       // Look for alarm.mp3 in various locations
       final List<String> possiblePaths = [];
@@ -94,6 +106,18 @@ class TimerService {
     }
   }
 
+  // Android-specific default alarm loader (from assets)
+  Future<void> _loadDefaultAlarmMobile() async {
+    // Extract alarm from assets to a temporary file
+    _defaultAlarmPath = await _audioHelper.getAlarmSoundPath();
+
+    if (_defaultAlarmPath != null) {
+      debugPrint('✅ Android default alarm ready at: $_defaultAlarmPath');
+    } else {
+      debugPrint('❌ Failed to load Android default alarm');
+    }
+  }
+
   void startTimer({
     required String itemId,
     required String itemTitle,
@@ -107,15 +131,14 @@ class TimerService {
 
     // Store all preferences
     _itemTitles[itemId] = itemTitle;
-    _itemSoundPaths[itemId] =
-        soundPath; // Store the actual choice (null = default)
+    _itemSoundPaths[itemId] = soundPath;
     _itemLoopSettings[itemId] = loopSound;
 
     final timer = Timer(duration, () async {
       // Get the stored sound path
       final storedPath = _itemSoundPaths[itemId];
 
-      // Get valid sound path (null = use default)
+      // Get valid sound path (platform-specific)
       final validPath = await getValidSoundPath(storedPath);
 
       await _onTimerComplete(
@@ -144,25 +167,78 @@ class TimerService {
     }
   }
 
-  // Get valid sound path with fallback to default
+  // Platform-specific sound path validation
   Future<String?> getValidSoundPath(String? customPath) async {
+    debugPrint(
+      '🔍 getValidSoundPath called with: ${customPath ?? "null (default)"} on ${_isAndroid ? "Android" : "Windows"}',
+    );
+
     // If custom path is provided and valid, use it
-    if (customPath != null &&
-        customPath.isNotEmpty &&
-        await isSoundFileValid(customPath)) {
-      debugPrint('✅ Using custom sound: $customPath');
-      return customPath;
+    if (customPath != null && customPath.isNotEmpty) {
+      try {
+        final file = File(customPath);
+        final exists = await file.exists();
+        debugPrint('  Custom path exists: $exists');
+        if (exists) {
+          return customPath;
+        }
+      } catch (e) {
+        debugPrint('  Error checking custom path: $e');
+      }
     }
 
-    // Otherwise fall back to default alarm
-    if (_defaultAlarmPath != null &&
-        await isSoundFileValid(_defaultAlarmPath)) {
-      debugPrint('⚠️ Using default alarm sound (custom not available or null)');
-      return _defaultAlarmPath;
+    // Platform-specific default sound handling
+    if (_isAndroid) {
+      return await _getValidAndroidDefaultSound();
+    } else if (_isWindows) {
+      return await _getValidWindowsDefaultSound();
     }
 
-    // No valid sound found
-    debugPrint('❌ No valid alarm sound found');
+    return null;
+  }
+
+  // Android-specific default sound handler (uses temp files)
+  Future<String?> _getValidAndroidDefaultSound() async {
+    if (_defaultAlarmPath != null) {
+      try {
+        final file = File(_defaultAlarmPath!);
+        final exists = await file.exists();
+        debugPrint('  Android default path exists: $exists');
+        if (exists) {
+          return _defaultAlarmPath;
+        } else {
+          // Try to reload from assets
+          await _loadDefaultAlarmMobile();
+          if (_defaultAlarmPath != null &&
+              await File(_defaultAlarmPath!).exists()) {
+            return _defaultAlarmPath;
+          }
+        }
+      } catch (e) {
+        debugPrint('  Error checking Android default path: $e');
+      }
+    }
+
+    debugPrint('❌ No valid Android alarm sound found');
+    return null;
+  }
+
+  // Windows-specific default sound handler (uses file system)
+  Future<String?> _getValidWindowsDefaultSound() async {
+    if (_defaultAlarmPath != null) {
+      try {
+        final file = File(_defaultAlarmPath!);
+        final exists = await file.exists();
+        debugPrint('  Windows default path exists: $exists');
+        if (exists) {
+          return _defaultAlarmPath;
+        }
+      } catch (e) {
+        debugPrint('  Error checking Windows default path: $e');
+      }
+    }
+
+    debugPrint('❌ No valid Windows alarm sound found');
     return null;
   }
 
@@ -174,39 +250,38 @@ class TimerService {
   ) async {
     _activeTimers.remove(itemId);
 
-    // Get the item title
     final itemTitle = _itemTitles[itemId] ?? 'Timer';
     _itemTitles.remove(itemId);
 
     debugPrint('Timer completed for item $itemId ($itemTitle)');
 
-    // SHOW WINDOW using callback
-    if (onShowWindow != null) {
+    if (_isWindows && onShowWindow != null) {
       onShowWindow!();
     }
 
-    // Get valid sound path (with fallback to default)
     final validSoundPath = await getValidSoundPath(soundPath);
 
-    // Play alarm sound if available
+    // Play alarm using platform-specific method
     if (validSoundPath != null) {
-      await playAlarm(itemId, validSoundPath, loopSound);
+      if (_isAndroid) {
+        await playAlarmMobile(itemId, validSoundPath, loopSound);
+      } else {
+        await playAlarm(itemId, validSoundPath, loopSound);
+      }
     } else {
       debugPrint('⚠️ No valid alarm sound available');
     }
 
-    // Show notification
     await _showNotification(itemId, itemTitle);
 
-    // Trigger callback with item title
     if (onTimerComplete != null) {
       onTimerComplete!(itemId, itemTitle);
     }
 
-    // Trigger original onComplete
     onComplete();
   }
 
+  // Original Windows version (kept unchanged)
   Future<void> playAlarm(String itemId, String soundPath, bool loop) async {
     try {
       stopAlarm(itemId);
@@ -234,16 +309,107 @@ class TimerService {
     }
   }
 
+  // New Android-specific version with AudioCache fix
+  Future<void> playAlarmMobile(
+    String itemId,
+    String soundPath,
+    bool loop,
+  ) async {
+    try {
+      stopAlarm(itemId);
+
+      final player = AudioPlayer();
+      _activeAlarms[itemId] = player;
+
+      // Use AudioCache for better asset handling on Android
+      final cache = AudioCache();
+
+      if (loop) {
+        // For looping, use media player mode for better streaming
+        await player.setReleaseMode(ReleaseMode.loop);
+        await player.setPlayerMode(PlayerMode.mediaPlayer);
+      } else {
+        await player.setPlayerMode(PlayerMode.lowLatency);
+      }
+
+      // Check if file exists
+      final file = File(soundPath);
+      if (!await file.exists()) {
+        debugPrint('❌ TimerService: Alarm file not found: $soundPath');
+        return;
+      }
+
+      // Play using the file directly
+      await player.play(DeviceFileSource(soundPath));
+      debugPrint('🔊 Mobile alarm playing for item $itemId');
+
+      // Monitor duration for debugging
+      final duration = await player.getDuration();
+      if (duration != null) {
+        debugPrint('⏱️ Alarm duration: ${duration.inSeconds} seconds');
+
+        // Track playback progress
+        bool hasLoggedProgress = false;
+        player.onPositionChanged.listen((position) {
+          if (!hasLoggedProgress &&
+              position.inMilliseconds > duration.inMilliseconds * 0.8) {
+            debugPrint('✅ Alarm playing full duration for item $itemId');
+            hasLoggedProgress = true;
+          }
+        });
+
+        // Track loops if enabled
+        if (loop) {
+          int loopCount = 0;
+          player.onPlayerComplete.listen((_) {
+            loopCount++;
+            debugPrint('🔄 Loop #$loopCount completed for item $itemId');
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ TimerService: Error playing mobile alarm: $e');
+    }
+  }
+
+  Future<void> testAlarm() async {
+    debugPrint('🧪 Testing alarm system...');
+
+    // Get the default alarm path
+    final soundPath = await getValidSoundPath(null);
+
+    if (soundPath != null) {
+      debugPrint('✅ Test: Found alarm at: $soundPath');
+
+      // Try to play it using platform-specific method
+      if (_isAndroid) {
+        await playAlarmMobile('test_alarm', soundPath, true);
+      } else {
+        await playAlarm('test_alarm', soundPath, true);
+      }
+
+      // Stop it after 5 seconds
+      Future.delayed(const Duration(seconds: 5), () {
+        stopAlarm('test_alarm');
+        debugPrint('🧪 Test alarm stopped');
+      });
+    } else {
+      debugPrint('❌ Test: No alarm sound found');
+    }
+  }
+
   void stopAlarm(String itemId) {
-    debugPrint('TimerService: Stopping alarm for item $itemId');
+    debugPrint('🔴 STOP ALARM CALLED for item $itemId');
+    debugPrint('  Stack trace: ${StackTrace.current}');
+
     final player = _activeAlarms[itemId];
     if (player != null) {
       player.stop();
       player.dispose();
       _activeAlarms.remove(itemId);
-      debugPrint('Alarm stopped for item $itemId');
+      debugPrint('✅ Alarm stopped for item $itemId');
     } else {
-      debugPrint('No active alarm found for item $itemId');
+      debugPrint('⚠️ No active alarm found for item $itemId');
     }
   }
 
@@ -259,6 +425,8 @@ class TimerService {
     _activeTimers[itemId]?.cancel();
     _activeTimers.remove(itemId);
     _itemTitles.remove(itemId);
+    _itemSoundPaths.remove(itemId);
+    _itemLoopSettings.remove(itemId);
     stopAlarm(itemId);
   }
 
@@ -311,23 +479,27 @@ class TimerService {
         final elapsed = now.difference(item.timerStartTime!);
 
         if (elapsed >= item.timerDuration!) {
-          // Timer completed while PC was off
-          debugPrint('⏰ Timer completed while PC was off: ${item.title}');
+          debugPrint('⏰ Timer completed while device was off: ${item.title}');
 
-          // Trigger completion
-          await triggerTimerCompletion(item.id, item.title);
+          // Get valid sound path
+          final validPath = await getValidSoundPath(item.alarmSoundPath);
 
-          // Update item state
+          // Trigger completion with platform-specific playback
+          await triggerTimerCompletion(
+            item.id,
+            item.title,
+            soundPath: validPath,
+            loopSound: item.isLoopingAlarm,
+          );
+
           item.completeTimer();
 
-          // Save to database
           if (onTimerComplete != null) {
             onTimerComplete!(item.id, item.title);
           }
         } else if (elapsed.inSeconds > 0) {
-          // Timer is still running, update the UI to show correct remaining time
           debugPrint(
-            '⏰ Timer still running after PC off: ${item.title}, elapsed: ${elapsed.inSeconds}s',
+            '⏰ Timer still running after restart: ${item.title}, elapsed: ${elapsed.inSeconds}s',
           );
         }
       }
@@ -342,14 +514,18 @@ class TimerService {
   }) async {
     debugPrint('⏰ Triggering completion for timer: $itemTitle');
 
-    // Show window
-    if (onShowWindow != null) {
+    // Show window (Windows only)
+    if (_isWindows && onShowWindow != null) {
       onShowWindow!();
     }
 
-    // Play alarm with validated path
+    // Play alarm with platform-specific method
     if (soundPath != null) {
-      await playAlarm(itemId, soundPath, loopSound);
+      if (_isAndroid) {
+        await playAlarmMobile(itemId, soundPath, loopSound);
+      } else {
+        await playAlarm(itemId, soundPath, loopSound);
+      }
     }
 
     // Show notification
@@ -369,7 +545,14 @@ class TimerService {
     }
     _activeTimers.clear();
     _itemTitles.clear();
+    _itemSoundPaths.clear();
+    _itemLoopSettings.clear();
     stopAllAlarms();
+
+    // Clean up temp files (Android only)
+    if (_isAndroid) {
+      _audioHelper.cleanOldTempFiles();
+    }
 
     debugPrint('TimerService: Cleanup complete');
   }

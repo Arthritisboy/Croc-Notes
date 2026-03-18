@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:modular_journal/data/services/timer_service.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/delete_checklist_dialog.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/edit_timer_dialog.dart';
+import 'package:modular_journal/features/notes/widgets/dialogs/mobile/mobile_timer_dialog.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/timer_complete_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -75,28 +76,54 @@ class _TitleGridState extends State<TitleGrid> {
   }
 
   void _showAddTimerDialog(BuildContext context, NotesViewModel viewModel) {
-    showDialog(
-      context: context,
-      builder: (context) => TimerSetupDialog(
-        onSave: (duration, soundPath, loopSound, title) {
-          // Create a timer item with custom name
-          final timerId = DateTime.now().millisecondsSinceEpoch.toString();
-          final timerItem = Note(
-            id: timerId,
-            title: title.isEmpty
-                ? 'Timer'
-                : title, // Use custom name or default
-            timerDuration: duration,
-            alarmSoundPath: soundPath,
-            isLoopingAlarm: loopSound,
-            timerState: TimerState.idle,
-          );
+    // Check if we're on mobile
+    final isMobile = MediaQuery.of(context).size.width < 600;
 
-          // Add to checklist
-          viewModel.addChecklistItemWithTimer(widget.tab.id, timerItem);
-        },
-      ),
-    );
+    if (isMobile) {
+      // Use mobile timer dialog
+      showDialog(
+        context: context,
+        builder: (context) => MobileTimerSetupDialog(
+          onSave: (duration, soundPath, loopSound, title) {
+            // Create a timer item with custom name
+            final timerId = DateTime.now().millisecondsSinceEpoch.toString();
+            final timerItem = Note(
+              id: timerId,
+              title: title.isEmpty ? 'Timer' : title,
+              timerDuration: duration,
+              alarmSoundPath: soundPath,
+              isLoopingAlarm: loopSound,
+              timerState: TimerState.idle,
+            );
+
+            // Add to checklist
+            viewModel.addChecklistItemWithTimer(widget.tab.id, timerItem);
+          },
+        ),
+      );
+    } else {
+      // Use desktop timer dialog
+      showDialog(
+        context: context,
+        builder: (context) => TimerSetupDialog(
+          onSave: (duration, soundPath, loopSound, title) {
+            // Create a timer item with custom name
+            final timerId = DateTime.now().millisecondsSinceEpoch.toString();
+            final timerItem = Note(
+              id: timerId,
+              title: title.isEmpty ? 'Timer' : title,
+              timerDuration: duration,
+              alarmSoundPath: soundPath,
+              isLoopingAlarm: loopSound,
+              timerState: TimerState.idle,
+            );
+
+            // Add to checklist
+            viewModel.addChecklistItemWithTimer(widget.tab.id, timerItem);
+          },
+        ),
+      );
+    }
   }
 
   void _handleCheckboxToggle(NotesViewModel viewModel, Note item) {
@@ -457,15 +484,39 @@ class _TitleGridState extends State<TitleGrid> {
     NotesViewModel viewModel,
     Note item,
   ) {
-    showDialog(
-      context: context,
-      builder: (context) => EditTimerDialog(
-        timerItem: item,
-        onSave: (updatedTimer) {
-          viewModel.updateNote(updatedTimer);
-        },
-      ),
-    );
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
+    if (isMobile) {
+      // Use mobile edit timer dialog
+      showDialog(
+        context: context,
+        builder: (context) => MobileTimerSetupDialog(
+          existingTimer: item,
+          onSave: (duration, soundPath, loopSound, title) {
+            final updatedTimer = Note(
+              id: item.id,
+              title: title.isEmpty ? item.title : title,
+              timerDuration: duration,
+              alarmSoundPath: soundPath,
+              isLoopingAlarm: loopSound,
+              timerState: TimerState.idle,
+            );
+            viewModel.updateNote(updatedTimer);
+          },
+        ),
+      );
+    } else {
+      // Use desktop edit timer dialog
+      showDialog(
+        context: context,
+        builder: (context) => EditTimerDialog(
+          timerItem: item,
+          onSave: (updatedTimer) {
+            viewModel.updateNote(updatedTimer);
+          },
+        ),
+      );
+    }
   }
 
   void _showDeleteConfirmation(
