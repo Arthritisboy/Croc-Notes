@@ -9,6 +9,7 @@ import 'package:modular_journal/features/notes/models/note.dart';
 import 'package:modular_journal/features/notes/views/mobile_main_view.dart';
 import 'package:modular_journal/features/notes/views/mobile_settings_view.dart';
 import 'package:modular_journal/features/notes/widgets/dialogs/exit_options_dialog.dart';
+import 'package:modular_journal/features/notes/widgets/dialogs/mobile/mobile_timer_complete_dialog.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
@@ -21,6 +22,9 @@ import 'features/notes/widgets/dialogs/timer_complete_dialog.dart';
 // Global instances
 final timerService = TimerService();
 late String cachedImagesDirectory;
+final bool isDesktop =
+    Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+final bool isMobile = Platform.isAndroid || Platform.isIOS;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,17 +34,21 @@ void main() async {
   debugPrint('Platform: ${Platform.operatingSystem}');
 
   // ✅ Platform-specific initialization
-  if (Platform.isWindows) {
+  if (isDesktop) {
     // Initialize desktop-only plugins
     debugPrint('\n1. Initializing window manager...');
     await windowManager.ensureInitialized();
     await windowManager.setPreventClose(true);
     debugPrint('   ✓ Window manager initialized');
 
-    debugPrint('   Setting up sqflite FFI...');
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-    debugPrint('   ✓ sqflite FFI initialized');
+    // sqflite FFI is Windows-only, macOS uses different setup
+    if (Platform.isWindows) {
+      debugPrint('   Setting up sqflite FFI...');
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      debugPrint('   ✓ sqflite FFI initialized');
+    }
+    // macOS uses regular sqflite, no FFI needed
   }
 
   // Initialize timer service (works on all platforms)
@@ -48,18 +56,26 @@ void main() async {
   await timerService.initialize();
 
   // Platform-specific image directory caching
-  if (Platform.isWindows) {
-    cachedImagesDirectory = DatabaseService.getImagesDirectorySync();
-    debugPrint('📁 [Windows] Cached images directory: $cachedImagesDirectory');
+  if (isDesktop) {
+    if (Platform.isWindows) {
+      cachedImagesDirectory = DatabaseService.getImagesDirectorySync();
+      debugPrint(
+        '📁 [Windows] Cached images directory: $cachedImagesDirectory',
+      );
+    } else if (Platform.isMacOS) {
+      // macOS uses async method like Android
+      cachedImagesDirectory = await DatabaseService.getImagesDirectoryAsync();
+      debugPrint('📁 [macOS] Cached images directory: $cachedImagesDirectory');
+    }
     await Directory(cachedImagesDirectory).create(recursive: true);
   } else {
-    // Android: Use async method
+    // Mobile (Android/iOS)
     cachedImagesDirectory = await DatabaseService.getImagesDirectoryAsync();
-    debugPrint('📁 [Android] Cached images directory: $cachedImagesDirectory');
+    debugPrint('📁 [Mobile] Cached images directory: $cachedImagesDirectory');
   }
 
   // ✅ Desktop-only callbacks and setup
-  if (Platform.isWindows) {
+  if (isDesktop) {
     // Set the callback to show window when timer completes
     timerService.onShowWindow = () async {
       debugPrint('⏰ TimerService: Showing window from callback');
@@ -84,47 +100,78 @@ void main() async {
       debugPrint('⏰ TimerService: Timer completed for $itemTitle');
       Future.delayed(const Duration(milliseconds: 300), () {
         if (navigatorKey.currentContext != null) {
+          final isMobile =
+              MediaQuery.of(navigatorKey.currentContext!).size.width < 600;
+
           navigatorKey.currentState?.push(
             DialogRoute(
               context: navigatorKey.currentContext!,
-              builder: (context) => TimerCompleteDialog(
-                itemId: itemId,
-                itemTitle: itemTitle,
-                onStopAlarm: () {
-                  debugPrint('Stopping alarm for item $itemId');
-                  timerService.stopAlarm(itemId);
-                },
-                onDismiss: () {
-                  debugPrint('Timer dialog dismissed for $itemTitle');
-                  try {
-                    final viewModel = Provider.of<NotesViewModel>(
-                      navigatorKey.currentContext!,
-                      listen: false,
-                    );
-                    viewModel.resetTimerItem(itemId);
-                    viewModel.updateTimerItemCheckbox(
-                      itemId,
-                      CheckboxState.unchecked,
-                    );
-                  } catch (e) {
-                    debugPrint('Error updating note: $e');
-                  }
-                },
-              ),
+              builder: (context) => isMobile
+                  ? MobileTimerCompleteDialog(
+                      itemTitle: itemTitle,
+                      onStopAlarm: () {
+                        debugPrint(
+                          '👆 USER PRESSED OK - stopping alarm for item $itemId',
+                        );
+                        timerService.stopAlarm(itemId);
+                      },
+                      onDismiss: () {
+                        debugPrint('👆 Dismissing dialog for $itemTitle');
+                        try {
+                          final viewModel = Provider.of<NotesViewModel>(
+                            navigatorKey.currentContext!,
+                            listen: false,
+                          );
+                          viewModel.resetTimerItem(itemId);
+                          viewModel.updateTimerItemCheckbox(
+                            itemId,
+                            CheckboxState.unchecked,
+                          );
+                        } catch (e) {
+                          debugPrint('Error updating note: $e');
+                        }
+                      },
+                    )
+                  : TimerCompleteDialog(
+                      itemId: itemId,
+                      itemTitle: itemTitle,
+                      onStopAlarm: () {
+                        debugPrint(
+                          '👆 USER PRESSED OK - stopping alarm for item $itemId',
+                        );
+                        timerService.stopAlarm(itemId);
+                      },
+                      onDismiss: () {
+                        debugPrint('👆 Dismissing dialog for $itemTitle');
+                        try {
+                          final viewModel = Provider.of<NotesViewModel>(
+                            navigatorKey.currentContext!,
+                            listen: false,
+                          );
+                          viewModel.resetTimerItem(itemId);
+                          viewModel.updateTimerItemCheckbox(
+                            itemId,
+                            CheckboxState.unchecked,
+                          );
+                        } catch (e) {
+                          debugPrint('Error updating note: $e');
+                        }
+                      },
+                    ),
             ),
           );
-        } else {
-          debugPrint('❌ navigatorKey.currentContext is null');
         }
       });
     };
 
     debugPrint('   ✓ Timer service initialized with window callback');
 
-    // Set up tray menu (Windows only)
-    await _setupTrayMenu();
+    // Set up tray menu (Windows and macOS)
+    if (Platform.isWindows || Platform.isMacOS) {
+      await _setupTrayMenu();
+    }
 
-    // Set window options (Windows only)
+    // Set window options (Windows and macOS)
     WindowOptions windowOptions = const WindowOptions(
       size: Size(1200, 800),
       minimumSize: Size(800, 600),
@@ -139,7 +186,17 @@ void main() async {
       windowManager.addListener(_WindowListener());
       await windowManager.show();
       await windowManager.focus();
-      await Window.setEffect(effect: WindowEffect.acrylic, dark: false);
+
+      // Acrylic effect is Windows-only
+      if (Platform.isWindows) {
+        await Window.setEffect(effect: WindowEffect.acrylic, dark: false);
+      }
+      // macOS uses vibrancy effect
+      else if (Platform.isMacOS) {
+        // Optional: Add macOS vibrancy if supported
+        // await Window.setEffect(effect: WindowEffect.vibrancy, dark: false);
+      }
+
       debugPrint('   ✓ Window shown and focused');
     });
   }
@@ -150,7 +207,7 @@ void main() async {
 
 // ✅ Make these functions conditional or only used on Windows
 Future<void> _setupTrayMenu() async {
-  if (!Platform.isWindows) return; // Guard clause
+  if (!(Platform.isWindows || Platform.isMacOS)) return;
 
   debugPrint('\n=== TRAY INITIALIZATION DEBUG ===');
   try {
@@ -164,35 +221,58 @@ Future<void> _setupTrayMenu() async {
         MenuItem(key: 'croc_quit', label: 'Exit Completely'),
       ],
     );
+    debugPrint('✓ Menu created with ${menu.items?.length} items');
 
     await trayManager.setContextMenu(menu);
-    await trayManager.setToolTip('Croc Notes');
+    debugPrint('✓ Context menu set');
 
-    // Try multiple icon paths
+    await trayManager.setToolTip('Croc Notes');
+    debugPrint('✓ Tooltip set');
+
+    // Platform-specific icon paths
     final exeDir = Directory(Platform.resolvedExecutable).parent;
-    final possiblePaths = [
-      '${exeDir.path}\\data\\flutter_assets\\assets\\icon\\app_icon.ico',
-      '${Directory.current.path}\\assets\\icon\\app_icon.ico',
-    ];
+    final List<String> possiblePaths = [];
+
+    if (Platform.isWindows) {
+      possiblePaths.addAll([
+        '${exeDir.path}\\data\\flutter_assets\\assets\\icon\\app_icon.ico',
+        '${Directory.current.path}\\assets\\icon\\app_icon.ico',
+        '${exeDir.path}\\app_icon.ico',
+      ]);
+    } else if (Platform.isMacOS) {
+      // On macOS, use the app bundle's icon from Assets.xcassets
+      // The icon is built into the app, so we can use a special path or just skip icon setting
+      debugPrint('macOS: Using app icon from Assets.xcassets');
+
+      // You can either:
+      // 1. Not set an icon (uses default app icon)
+      // 2. Try to use the icon from the bundle
+      final bundleIconPath = '${exeDir.path}/../Resources/AppIcon.icns';
+      possiblePaths.add(bundleIconPath);
+    }
 
     bool iconSet = false;
     for (final path in possiblePaths) {
+      debugPrint('Trying icon path: $path');
       final iconFile = File(path);
       if (await iconFile.exists()) {
+        debugPrint('✓ Icon file found at: $path');
         await trayManager.setIcon(path);
-        debugPrint('✓ Icon set from: $path');
+        debugPrint('✓ Icon set successfully');
         iconSet = true;
         break;
+      } else {
+        debugPrint('✗ Icon file not found at: $path');
       }
     }
 
-    if (!iconSet) {
-      debugPrint(
-        '⚠ No icon file found - tray will be invisible but functional',
-      );
+    if (!iconSet && Platform.isMacOS) {
+      debugPrint('ℹ️ No explicit icon set - using default app icon');
+      // On macOS, the tray will use the app icon by default
     }
 
     trayManager.addListener(_TrayListener());
+    debugPrint('✓ Tray listener added');
     debugPrint('✓ Tray initialized successfully');
   } catch (e) {
     debugPrint('❌ Tray initialization error: $e');
@@ -203,7 +283,7 @@ Future<void> _setupTrayMenu() async {
 class _WindowListener implements WindowListener {
   @override
   void onWindowClose() async {
-    if (!Platform.isWindows) return;
+    if (!(Platform.isWindows || Platform.isMacOS)) return;
     debugPrint('Window close event intercepted - showing exit options');
     await windowManager.hide();
   }
@@ -244,19 +324,21 @@ class _WindowListener implements WindowListener {
 class _TrayListener implements TrayListener {
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
-    if (!Platform.isWindows) return;
-    debugPrint('Tray menu clicked: ${menuItem.key}');
+    if (!(Platform.isWindows || Platform.isMacOS)) return;
+    debugPrint(
+      'Tray menu clicked: ${menuItem.key} on ${Platform.operatingSystem}',
+    );
     switch (menuItem.key) {
-      case 'show':
+      case 'croc_show':
         _showWindow();
         break;
-      case 'hide':
+      case 'croc_hide':
         windowManager.hide();
         break;
-      case 'about':
+      case 'croc_about':
         _showAboutDialog();
         break;
-      case 'quit':
+      case 'croc_quit':
         _showExitDialog();
         break;
     }
@@ -264,9 +346,18 @@ class _TrayListener implements TrayListener {
 
   @override
   void onTrayIconMouseDown() {
-    if (!Platform.isWindows) return;
-    debugPrint('Tray icon clicked - showing window');
-    _showWindow();
+    if (!(Platform.isWindows || Platform.isMacOS)) return;
+    debugPrint('Tray icon clicked on ${Platform.operatingSystem}');
+
+    if (Platform.isMacOS) {
+      // On macOS, left click shows the menu
+      debugPrint('  macOS: showing menu on left click');
+      trayManager.popUpContextMenu();
+    } else {
+      // On Windows, left click shows the window
+      debugPrint('  Windows: showing window on left click');
+      _showWindow();
+    }
   }
 
   @override
@@ -274,18 +365,26 @@ class _TrayListener implements TrayListener {
 
   @override
   void onTrayIconRightMouseDown() {
-    if (!Platform.isWindows) return;
-    debugPrint('Tray icon right mouse down - showing context menu');
-    Future.delayed(const Duration(milliseconds: 10), () {
-      trayManager.popUpContextMenu();
-    });
+    if (!(Platform.isWindows || Platform.isMacOS)) return;
+    debugPrint('Tray icon right mouse down on ${Platform.operatingSystem}');
+
+    if (Platform.isWindows) {
+      // On Windows, right click shows the menu
+      debugPrint('  Windows: showing menu on right click');
+      Future.delayed(const Duration(milliseconds: 10), () {
+        trayManager.popUpContextMenu();
+      });
+    }
+    // On macOS, right click might do nothing or we can ignore it
   }
 
   @override
   void onTrayIconRightMouseUp() => debugPrint('Tray icon right mouse up');
 
   void _showWindow() async {
-    if (!Platform.isWindows) return;
+    if (!(Platform.isWindows || Platform.isMacOS)) return;
+    debugPrint('Showing window on ${Platform.operatingSystem}');
+
     if (await windowManager.isMinimized()) {
       await windowManager.restore();
     }
@@ -294,7 +393,7 @@ class _TrayListener implements TrayListener {
   }
 
   void _showAboutDialog() {
-    if (!Platform.isWindows) return;
+    if (!(Platform.isWindows || Platform.isMacOS)) return;
     _showWindow();
     navigatorKey.currentState?.push(
       DialogRoute(
@@ -316,7 +415,7 @@ class _TrayListener implements TrayListener {
   }
 
   void _showExitDialog() {
-    if (!Platform.isWindows) return;
+    if (!(Platform.isWindows || Platform.isMacOS)) return;
     _showWindow();
     navigatorKey.currentState?.push(
       DialogRoute(

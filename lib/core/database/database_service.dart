@@ -27,15 +27,27 @@ class DatabaseService {
       }
 
       return dataDir;
+    } else if (Platform.isMacOS) {
+      // macOS: Use Application Support directory
+      final appSupportDir = await getApplicationSupportDirectory();
+      final appDir = path.join(appSupportDir.path, 'CrocNotes');
+      final appDirectory = Directory(appDir);
+
+      if (!await appDirectory.exists()) {
+        await appDirectory.create(recursive: true);
+        debugPrint('📁 [macOS] Created app directory: $appDir');
+      }
+
+      return appDir;
     } else {
-      // Android: App-specific storage (no permissions needed)
+      // Android/iOS: App-specific storage
       final documentsDir = await getApplicationDocumentsDirectory();
       final appDir = path.join(documentsDir.path, 'CrocNotes');
       final appDirectory = Directory(appDir);
 
       if (!await appDirectory.exists()) {
         await appDirectory.create(recursive: true);
-        debugPrint('📁 [Android] Created app directory: $appDir');
+        debugPrint('📁 [Mobile] Created app directory: $appDir');
       }
 
       return appDir;
@@ -312,7 +324,7 @@ class DatabaseService {
       final appDir = path.dirname(executablePath);
       return path.join(appDir, 'data', 'images');
     } else {
-      // Android: Can't use sync - will be set in main
+      // For other platforms, use async version
       return '';
     }
   }
@@ -320,6 +332,9 @@ class DatabaseService {
   static Future<String> getImagesDirectoryAsync() async {
     if (Platform.isWindows) {
       return getImagesDirectorySync();
+    } else if (Platform.isMacOS) {
+      final appSupportDir = await getApplicationSupportDirectory();
+      return path.join(appSupportDir.path, 'CrocNotes', 'images');
     } else {
       final documentsDir = await getApplicationDocumentsDirectory();
       return path.join(documentsDir.path, 'CrocNotes', 'images');
